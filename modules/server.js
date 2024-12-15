@@ -1,8 +1,9 @@
 const net = require('node:net');
 const fs = require('fs');
+const crypto = require('crypto');
 const NetStream = require('./packet.js').NetStream;
 const PacketType = require('./packet.js').PacketType;
-const Client = require('./client.js').Client;
+const Player = require('./player.js').Player;
 const Level = require('./game/level.js').Level;
 
 const DefaultProperties = {
@@ -19,18 +20,17 @@ class Server
 {
     constructor()
     {
-        this.netStream = new NetStream();
+        this.outStream = new NetStream();
         this.netServer = null;
         
         this.properties = this.loadProperties('properties.json');
-        this.clients = [];
-        this.levels = [new Level(8, 16, 8)];
+        this.serverKey = this.loadServerKey('SERVER_KEY');
+        this.players = [];
+        this.levels = [new Level(0, 256, 64, 256), new Level(1, 64, 64, 64)];
         this.levels[0].fillFlatGrass();
 
         this.heartbeatInterval = null;
         this.updateInterval = null;
-
-        this.disallowVanillaClients = false;
     }
 
     loadProperties(filePath)
@@ -46,134 +46,224 @@ class Server
         return finalProperties;
     }
 
+    loadServerKey(filePath)
+    {
+        var finalKey = Buffer.concat([crypto.randomBytes(32), crypto.randomBytes(16)]);
+        if (!fs.existsSync(filePath))
+        {
+            fs.writeFileSync(filePath, finalKey);
+            console.log(`${filePath} was generated. (NOTE: Do NOT lose this file or your users will not be able to authenticate!)`);
+        }
+        else
+            finalKey = fs.readFileSync(filePath);
+        return finalKey;
+    }
+
+    getCipherKeys()
+    {
+        return [ this.serverKey.subarray(0, 32), this.serverKey.subarray(32, 48) ];
+    }
+
     startServer()
     {
-        this.server = net.createServer(this.onClientConnected.bind(this));
-        this.server.on('error', this.onServerError.bind(this));
-        this.server.listen(this.properties.port, this.onServerReady.bind(this));
+        this.netServer = net.createServer(this.onClientConnected);
+        this.netServer.on('error', this.onServerError);
+        this.netServer.listen(this.properties.port, this.onServerReady);
         this.heartbeatInterval = setInterval(this.heartbeat.bind(this), 20 * 50);
         this.updateInterval = setInterval(this.update.bind(this), 50);
     }
 
     onServerReady()
     {
-        console.log(`Server "${this.properties.serverName}' ready`);
+        var server = global.server;
+        console.log(`Server "${server.properties.serverName}' ready`);
     }
 
     onServerError(err)
     {
+        var server = global.server;
         console.log(err);
-        this.server.close();
+        server.netServer.close();
     }
 
     onClientConnected(socket)
     {
-        console.log("Client connected, awaiting information...");
-        socket.on('close', this.onClientDisconnected.bind(this));
-        var client = new Client(this.clients.length, socket);
-        this.clients.push(client);
+        var server = global.server;
+        //console.log("Client connected, awaiting information...");
+        socket.on('close', server.onClientDisconnected);
+        var player = new Player(server.players.length, socket);
+        server.players.push(player);
     }
 
-    onClientDisconnected(socket)
+    onClientDisconnected(abrupt)
     {
-        console.log("Client disconnected");
-        for (var client of this.clients)
+        var server = global.server;
+        for (var player of server.players)
         {
-            if (client.isLoggedIn() && socket == client.socket)
+            if (this === player.socket)
             {
-                // remove client
-                this.clients.splice(this.clients.indexOf(client));
+                // remove user
+                player.onDisconnect();
+                server.players.splice(server.players.indexOf(player));
             }
         }
     }
 
     heartbeat()
     {
-        for (var client of this.clients)
+        for (var player of this.players)
         {
-            if (client.isLoggedIn() && !client.isDisconnected())
+            if (player.isLoggedIn() && !player.isDisconnected())
             {
-                this.netStream.newPacket(PacketType.ClientPing);
-                this.netStream.sendPacket(client.socket);
+                this.outStream.newPacket(PacketType.ClientPing);
+                this.outStream.sendPacket(player.socket);
             }
         }
     }
 
     update()
     {
-        for (var client of this.clients)
+        for (var player of this.players)
         {
-            if (client.isDisconnected())
+            if (player.isDisconnected())
             {
-                // remove client, destroy socket
-                client.socket.end();
-                this.clients.splice(this.clients.indexOf(client));
+                // remove user, destroy socket
+                player.socket.end();
+                this.players.splice(this.players.indexOf(player));
             }
-            if (!client.tickResponse())
+            if (!player.tickResponse())
             {
-                client.disconnect(this.netStream, 'Timed out');
+                player.disconnect(this.outStream, 'Timed out');
             }
         }
     }
 
-    sendServerHandshake(client)
+    sendServerHandshake(player)
     {
-        this.netStream.newPacket(PacketType.Handshake);
-        this.netStream.writeByte(0x07);
-        this.netStream.writeString(this.properties.serverName);
-        this.netStream.writeString(this.properties.motd);
-        this.netStream.writeByte(0);
-        this.netStream.sendPacket(client.socket);
+        this.outStream.newPacket(PacketType.Handshake);
+        this.outStream.writeByte(0x07);
+        this.outStream.writeString(this.properties.serverName);
+        this.outStream.writeString(this.properties.motd);
+        this.outStream.writeByte(0);
+        this.outStream.sendPacket(player.socket);
     }
 
-    sendExtensionInfo(client)
+    sendExtensionInfo(player)
     {
         // info
-        this.netStream.newPacket(PacketType.ExtInfo);
-        this.netStream.writeString("classic.js Alpha 0");
-        this.netStream.writeUShort(0);
-        this.netStream.sendPacket(client.socket);
+        this.outStream.newPacket(PacketType.ExtInfo);
+        this.outStream.writeString("classic.js Alpha 0");
+        this.outStream.writeUShort(0);
+        this.outStream.sendPacket(player.socket);
     }
 
-    sendClientToLevel(client, level)
+    sendPlayerToLevel(player, level)
     {
-        client.sendToLevel(this.levels[level]);
+        if (player.currentLevel === this.levels[level])
+            return false;
+        else
+            player.sendToLevel(this.levels[level]);
+        return true;
+    }
+
+    getPlayerCount()
+    {
+        return this.players.length;
+    }
+
+    /*
+        TODO: turn these into events
+    */
+
+    notifyPlayerConnected(player)
+    {
+        for (var otherPlayer of this.players)
+        {
+            if (otherPlayer !== player)
+                otherPlayer.sendMessage(`&e${player.username} joined the game`);
+        }
+    }
+
+    notifyPlayerDisconnected(player)
+    {
+        for (var otherPlayer of this.players)
+        {
+            if (otherPlayer !== player)
+                otherPlayer.sendMessage(`&e${player.username} left the game`);
+        }
     }
 
     notifyPlayerAdded(level, player)
     {
-        console.log('added');
-        this.netStream.newPacket(PacketType.AddPlayer);
-        this.netStream.writeByte(player.client.clientID);
-        this.netStream.writeString(player.client.username);
-        this.netStream.writeUShort(player.posX);
-        this.netStream.writeUShort(player.posY);
-        this.netStream.writeUShort(player.posZ);
-        this.netStream.writeByte(player.yaw);
-        this.netStream.writeByte(player.pitch);
-        for (var client of this.clients)
+        this.outStream.newPacket(PacketType.AddPlayer);
+        this.outStream.writeByte(player.playerID);
+        this.outStream.writeString(player.username);
+        this.outStream.writeUShort(player.posX);
+        this.outStream.writeUShort(player.posY);
+        this.outStream.writeUShort(player.posZ);
+        this.outStream.writeUByte(player.yaw);
+        this.outStream.writeUByte(player.pitch);
+        for (var otherPlayer of this.players)
         {
-            if (client.currentLevel === level)
-                this.netStream.sendPacket(client);
+            if (otherPlayer !== player && otherPlayer.currentLevel === level)
+                this.outStream.sendPacket(otherPlayer.socket);
         }
-        this.netStream.reset();
+        this.outStream.reset();
     }
 
     notifyPlayerRemoved(level, player)
     {
-        this.netStream.newPacket(PacketType.RemovePlayer);
-        this.netStream.writeByte(player.client.clientID);
-        for (var client of this.clients)
+        this.outStream.newPacket(PacketType.RemovePlayer);
+        this.outStream.writeByte(player.playerID);
+        for (var otherPlayer of this.players)
         {
-            if (client.currentLevel === level)
-                this.netStream.sendPacket(client);
+            if (otherPlayer !== player && otherPlayer.currentLevel === level)
+                this.outStream.sendPacket(otherPlayer.socket);
         }
-        this.netStream.reset();
+        this.outStream.reset();
     }
-    
-    getPlayerCount()
+
+    notifyPlayerMessage(player, message)
     {
-        return this.clients.length;
+        for (var otherPlayer of this.players)
+        {
+            if (player.localChat && otherPlayer.currentLevel === player.currentLevel)
+                otherPlayer.sendMessage(`(LOCAL) <${player.username}> ${message}`);
+            else
+                otherPlayer.sendMessage(`<${player.username}> ${message}`);
+        }
+    }
+
+    notifyBlockPlaced(player, x, y, z, type)
+    {
+        for (var otherPlayer of this.players)
+        {
+            if (otherPlayer.currentLevel === player.currentLevel)
+            {
+                this.outStream.newPacket(PacketType.SetBlockServer);
+                this.outStream.writeUShort(x);
+                this.outStream.writeUShort(y);
+                this.outStream.writeUShort(z);
+                this.outStream.writeUByte(type);
+                this.outStream.sendPacket(otherPlayer.socket);
+            }
+        }
+    }
+
+    notifyBlockRemoved(player, x, y, z)
+    {
+        for (var otherPlayer of this.players)
+        {
+            if (otherPlayer.currentLevel === player.currentLevel)
+            {
+                this.outStream.newPacket(PacketType.SetBlockServer);
+                this.outStream.writeUShort(x);
+                this.outStream.writeUShort(y);
+                this.outStream.writeUShort(z);
+                this.outStream.writeUByte(0);
+                this.outStream.sendPacket(otherPlayer.socket);
+            }
+        }
     }
 }
 

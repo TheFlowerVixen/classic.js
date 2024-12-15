@@ -3,14 +3,30 @@ const PacketType = require('../packet.js').PacketType;
 
 class Level
 {
-    constructor(sizeX, sizeY, sizeZ)
+    constructor(levelID, sizeX, sizeY, sizeZ)
     {    
+        this.levelID = levelID;
         this.sizeX = sizeX;
         this.sizeY = sizeY;
         this.sizeZ = sizeZ;
 
         this.players = [];
         this.blocks = new Array(this.sizeX * this.sizeY * this.sizeZ);
+    }
+
+    flattenCoordinate(x, y, z)
+    {
+        return (this.sizeX * this.sizeZ) * y + (this.sizeX) * z + x;
+    }
+
+    setBlock(x, y, z, type)
+    {
+        this.blocks[this.flattenCoordinate(x, y, z)] = type;
+    }
+
+    getBlock(x, y, z)
+    {
+        return this.blocks[this.flattenCoordinate(x, y, z)];
     }
 
     addPlayer(player)
@@ -27,25 +43,66 @@ class Level
         global.server.notifyPlayerRemoved(this, player);
     }
 
-    sendLevelData(netStream, client)
+    sendLevelData(netStream, player)
     {
         // level init
         netStream.newPacket(PacketType.LevelInit);
+        netStream.sendPacket(player.socket);
+
+        // compress block data
+        var sizeBuffer = Buffer.alloc(4);
+        sizeBuffer.writeUInt32BE(this.blocks.length);
+        var blockBuffer = Buffer.from(this.blocks);
+        var compressedBlocks = zlib.gzipSync(Buffer.concat([sizeBuffer, blockBuffer]), {level: -1});
+        //console.log(compressedBlocks.length);
         
-        // level chunk
-        netStream.writeUByte(PacketType.LevelChunk);
-        const chunkData = writeAndDeflate();
-        netStream.writeUShort(chunkData.length);
-        netStream.write(chunkData);
-        netStream.writeUByte(0xFF);
+        // level chunks
+        var chunkBuffer = Buffer.alloc(1024, 0x00);
+        var position = 0;
+        var remainingBlocks = compressedBlocks.length;
+
+        var chunkSize = 0;
+        while (remainingBlocks > 0)
+        {
+            chunkSize = Math.min(remainingBlocks, chunkBuffer.length);
+            compressedBlocks.copy(chunkBuffer, 0, position, chunkSize);
+
+            netStream.newPacket(PacketType.LevelChunk);
+            netStream.writeUShort(chunkSize);
+            netStream.write(chunkBuffer);
+            netStream.writeUByte((position + chunkSize) * 100 / compressedBlocks.length);
+            netStream.sendPacket(player.socket);
+
+            chunkBuffer.fill(0x00);
+            remainingBlocks -= chunkSize;
+            position += chunkSize;
+        }
 
         // level finalize
-        netStream.writeUByte(PacketType.LevelEnd);
+        netStream.newPacket(PacketType.LevelEnd);
         netStream.writeUShort(this.sizeX);
         netStream.writeUShort(this.sizeY);
         netStream.writeUShort(this.sizeZ);
+        netStream.sendPacket(player.socket);
 
-        netStream.sendPacket(client.socket);
+        // other players
+        /*
+        for (var player in this.players)
+        {
+            if (player != user.player)
+            {
+                netStream.newPacket(PacketType.AddPlayer);
+                netStream.writeByte(player.user.userID);
+                netStream.writeString(player.user.username);
+                netStream.writeUShort(player.posX);
+                netStream.writeUShort(player.posY);
+                netStream.writeUShort(player.posZ);
+                netStream.writeByte(player.yaw);
+                netStream.writeByte(player.pitch);
+                netStream.sendPacket(user.socket);
+            }
+        }
+        */
     }
 
     fillFlatGrass()
@@ -65,20 +122,11 @@ class Level
                         block = 3;
                     else if (y < 6)
                         block = 2;
-                    var index = y + (z * (this.sizeY)) + (x * (this.sizeY) * (this.sizeZ));
+                    var index = this.flattenCoordinate(x, y, z);
                     this.blocks[index] = block;
                 }
             }
         }
-    }
-
-    writeAndDeflate()
-    {
-        var dataBuffer = Buffer.alloc(1024, 0x00);
-        dataBuffer.writeInt32BE(this.blocks.length);
-        for (var i = 0; i < this.blocks.length; i++)
-            dataBuffer.writeInt8(this.blocks[i]);
-        return zlib.deflateSync(dataBuffer, {level: -1});
     }
 }
 

@@ -139,3 +139,8 @@ dist
 
 # Built Visual Studio Code Extensions
 *.vsix
+
+# Generated server files
+properties.json
+SERVER_KEY
+users/
