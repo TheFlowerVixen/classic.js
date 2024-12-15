@@ -2,6 +2,14 @@ const PacketType = require('./packet.js').PacketType;
 const NetStream = require('./packet.js').NetStream;
 const Player = require('./player.js').Player;
 
+const ClientState = {
+    Connected: 0,
+    SentHandshake: 1,
+    SendingExtensions: 2,
+    LoggedIn: 3,
+    Disconnected: 4
+};
+
 class Client
 {
     constructor(clientID, socket)
@@ -16,11 +24,11 @@ class Client
         this.clientSoftware = "Minecraft Classic 0.30";
         this.username = "";
         this.authKey = "";
-        this.responseTime = 0;
-        this.loggedIn = false;
-        this.disconnected = false;
         this.player = new Player(this);
         this.currentLevel = null;
+
+        this.responseTime = 0;
+        this.clientState = ClientState.Connected;
 
         this.supportsCPE = false;
         this.supportedExtensions = [];
@@ -34,40 +42,67 @@ class Client
         {
             var packetID = this.netStream.readByte(data);
             console.log(`Received packet ID 0x${packetID.toString(16)}`);
+            if (this.clientState == ClientState.Connected && packetID != 0)
+            {
+                // was supposed to send a handshake...
+                this.socket.end();
+                this.clientState == ClientState.Disconnected;
+                return;
+            }
             switch (packetID)
             {		
-                case PacketType.Login:
+                case PacketType.Handshake:
+                    if (this.clientState == ClientState.Connected)
+                        this.clientState = ClientState.SentHandshake;
+                    else if (this.clientState != ClientState.SentHandshake)
+                    {
+                        // client shouldn't have sent another handshake, bail
+                        this.socket.destroy();
+                        this.clientState == ClientState.Disconnected;
+                        break;
+                    }
+
+                    if (global.server.getPlayerCount() > global.server.properties.maxPlayers)
+                    {
+                        this.disconnect(this.netStream, "Server is full!");
+                        break;
+                    }
+
                     var protocolVer = this.netStream.readByte(data);
                     if (protocolVer != 0x07)
                     {
                         this.disconnect(this.netStream, "Unknown protocol version!");
                         break;
                     }
+
                     this.username = this.netStream.readString(data);
                     this.authKey = this.netStream.readString(data);
+                    if (global.server.properties.password != "" && this.authKey != global.server.properties.password)
+                    {
+                        this.disconnect(this.netStream, "Invalid password!");
+                        break;
+                    }
+
                     var supportByte = this.netStream.readByte(data);
                     if (supportByte == 0x42)
                     {
                         this.supportsCPE = true;
                         this.extensionCount = 0;
                     }
-                    else if (global.server.disallowVanillaClients)
+                    else if (global.server.properties.disallowVanillaClients)
                     {
                         this.disconnect(this.netStream, "Your client is unsupported!");
                         break;
                     }
-                    
-                    console.log(`Client id ${this.clientID} logged in as ${this.username} (auth key ${this.authKey}, supports CPE: ${this.supportsCPE})`);
     
                     if (this.supportsCPE)
                     {
                         global.server.sendExtensionInfo(this);
-                        // wait for extensions
+                        this.clientState = ClientState.SendingExtensions;
                     }
                     else
                     {
-                        global.server.sendServerHandshake(this);
-                        this.loggedIn = true;
+                        this.logIn();
                     }
                     
                     break;
@@ -94,8 +129,7 @@ class Client
                     if (this.extensionCount == 0)
                     {
                         //console.log('No supported extensions, send handshake');
-                        global.server.sendServerHandshake(this);
-                        this.loggedIn = true;
+                        this.logIn();
                     }
                     break;
                 
@@ -109,10 +143,8 @@ class Client
                     this.extensionCount--;
                     if (this.extensionCount == 0)
                     {
-                        console.log(this.supportedExtensions);
                         //console.log('Done, send handshake');
-                        global.server.sendServerHandshake(this);
-                        this.loggedIn = true;
+                        this.logIn();
                     }
                     break;
     
@@ -128,6 +160,14 @@ class Client
     {
         console.log(err);
         this.disconnect(`Internal error: ${err}`);
+    }
+
+    logIn()
+    {
+        console.log(`Client id ${this.clientID} logged in as ${this.username} (auth key ${this.authKey}, supports CPE: ${this.supportsCPE})`);
+        global.server.sendServerHandshake(this);
+        global.server.sendClientToLevel(this, 0);
+        this.clientState = ClientState.LoggedIn;
     }
 
     tickResponse()
@@ -146,30 +186,31 @@ class Client
         this.netStream.newPacket(PacketType.DisconnectPlayer);
         this.netStream.writeString(reason);
         this.netStream.sendPacket(this.socket);
-        this.socket.destroy();
-        this.disconnected = true;
+        this.socket.end();
+        this.clientState = ClientState.Disconnected;
     }
 
     isLoggedIn()
     {
-        return this.loggedIn;
+        return this.clientState == ClientState.LoggedIn;
     }
 
     isDisconnected()
     {
-        return this.disconnected;
+        return this.clientState == ClientState.Disconnected;
     }
 
     sendToLevel(level)
     {
-        if (this.loggedIn && !this.disconnected)
+        if (this.isLoggedIn())
         {
             if (this.currentLevel != null)
                 this.currentLevel.removePlayer(this.player);
             this.currentLevel = level;
             level.addPlayer(this.player);
+            level.sendLevelData(this.netStream, this);
         }
     }
 }
 
-module.exports = { Client };
+module.exports = { Client, ClientState };

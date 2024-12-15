@@ -1,4 +1,5 @@
 const zlib = require('node:zlib');
+const PacketType = require('../packet.js').PacketType;
 
 class Level
 {
@@ -24,6 +25,27 @@ class Level
         if (playerIndex > -1)
             this.players.splice(playerIndex);
         global.server.notifyPlayerRemoved(this, player);
+    }
+
+    sendLevelData(netStream, client)
+    {
+        // level init
+        netStream.newPacket(PacketType.LevelInit);
+        
+        // level chunk
+        netStream.writeUByte(PacketType.LevelChunk);
+        const chunkData = writeAndDeflate();
+        netStream.writeUShort(chunkData.length);
+        netStream.write(chunkData);
+        netStream.writeUByte(0xFF);
+
+        // level finalize
+        netStream.writeUByte(PacketType.LevelEnd);
+        netStream.writeUShort(this.sizeX);
+        netStream.writeUShort(this.sizeY);
+        netStream.writeUShort(this.sizeZ);
+
+        netStream.sendPacket(client.socket);
     }
 
     fillFlatGrass()

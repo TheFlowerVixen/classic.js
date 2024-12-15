@@ -162,7 +162,6 @@ class NetStream
 	sendPacket(client)
 	{
 		client.write(Buffer.concat(this.chunks));
-		this.reset();
 	}
 
 	getPosition()
@@ -177,7 +176,7 @@ class NetStream
 }
 
 const PacketType = {
-	Login: 0x00,
+	Handshake: 0x00,
 	ClientPing: 0x01,
 	LevelInit: 0x02,
 	LevelChunk: 0x03,

@@ -1,8 +1,19 @@
 const net = require('node:net');
+const fs = require('fs');
 const NetStream = require('./packet.js').NetStream;
 const PacketType = require('./packet.js').PacketType;
 const Client = require('./client.js').Client;
 const Level = require('./game/level.js').Level;
+
+const DefaultProperties = {
+    serverName: "classic.js Server",
+    motd: "A Nice Server",
+    password: "",
+    port: 25565,
+    maxPlayers: 20,
+
+    disallowVanillaClients: false
+}
 
 class Server
 {
@@ -11,10 +22,10 @@ class Server
         this.netStream = new NetStream();
         this.netServer = null;
         
-        this.serverName = "classic.js Server";
-        this.motd = "A Nice Server";
+        this.properties = this.loadProperties('properties.json');
         this.clients = [];
-        this.levels = [];
+        this.levels = [new Level(8, 16, 8)];
+        this.levels[0].fillFlatGrass();
 
         this.heartbeatInterval = null;
         this.updateInterval = null;
@@ -22,18 +33,31 @@ class Server
         this.disallowVanillaClients = false;
     }
 
-    startServer(port)
+    loadProperties(filePath)
+    {
+        var finalProperties = DefaultProperties;
+        if (!fs.existsSync(filePath))
+            fs.writeFileSync(filePath, JSON.stringify(finalProperties, null, 4));
+        else
+        {
+            finalProperties = Object.assign(finalProperties, JSON.parse(fs.readFileSync(filePath)));
+            fs.writeFileSync(filePath, JSON.stringify(finalProperties, null, 4));
+        }
+        return finalProperties;
+    }
+
+    startServer()
     {
         this.server = net.createServer(this.onClientConnected.bind(this));
         this.server.on('error', this.onServerError.bind(this));
-        this.server.listen(port, this.onServerReady.bind(this));
+        this.server.listen(this.properties.port, this.onServerReady.bind(this));
         this.heartbeatInterval = setInterval(this.heartbeat.bind(this), 20 * 50);
         this.updateInterval = setInterval(this.update.bind(this), 50);
     }
 
     onServerReady()
     {
-        console.log(`Server "${this.serverName}" ready`);
+        console.log(`Server "${this.properties.serverName}' ready`);
     }
 
     onServerError(err)
@@ -81,7 +105,8 @@ class Server
         {
             if (client.isDisconnected())
             {
-                // remove client
+                // remove client, destroy socket
+                client.socket.end();
                 this.clients.splice(this.clients.indexOf(client));
             }
             if (!client.tickResponse())
@@ -93,10 +118,10 @@ class Server
 
     sendServerHandshake(client)
     {
-        this.netStream.newPacket(PacketType.Login);
+        this.netStream.newPacket(PacketType.Handshake);
         this.netStream.writeByte(0x07);
-        this.netStream.writeString(this.serverName);
-        this.netStream.writeString(this.motd);
+        this.netStream.writeString(this.properties.serverName);
+        this.netStream.writeString(this.properties.motd);
         this.netStream.writeByte(0);
         this.netStream.sendPacket(client.socket);
     }
@@ -112,22 +137,43 @@ class Server
 
     sendClientToLevel(client, level)
     {
-        client.player.sendToLevel(level);
+        client.sendToLevel(this.levels[level]);
     }
 
     notifyPlayerAdded(level, player)
     {
+        console.log('added');
+        this.netStream.newPacket(PacketType.AddPlayer);
+        this.netStream.writeByte(player.client.clientID);
+        this.netStream.writeString(player.client.username);
+        this.netStream.writeUShort(player.posX);
+        this.netStream.writeUShort(player.posY);
+        this.netStream.writeUShort(player.posZ);
+        this.netStream.writeByte(player.yaw);
+        this.netStream.writeByte(player.pitch);
         for (var client of this.clients)
         {
-            //this.netStream.newPacket(PacketType.AddPlayer);
-            //this.netStream.writeUByte(player.client.clientID);
-            //this.netStream.
+            if (client.currentLevel === level)
+                this.netStream.sendPacket(client);
         }
+        this.netStream.reset();
     }
 
     notifyPlayerRemoved(level, player)
     {
-
+        this.netStream.newPacket(PacketType.RemovePlayer);
+        this.netStream.writeByte(player.client.clientID);
+        for (var client of this.clients)
+        {
+            if (client.currentLevel === level)
+                this.netStream.sendPacket(client);
+        }
+        this.netStream.reset();
+    }
+    
+    getPlayerCount()
+    {
+        return this.clients.length;
     }
 }
 
