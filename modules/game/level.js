@@ -1,14 +1,19 @@
 const zlib = require('node:zlib');
+const fs = require('fs');
 const PacketType = require('../packet.js').PacketType;
 
 class Level
 {
-    constructor(levelID, sizeX, sizeY, sizeZ)
+    constructor(levelName, sizeX, sizeY, sizeZ)
     {    
-        this.levelID = levelID;
+        this.levelName = levelName;
         this.sizeX = sizeX;
         this.sizeY = sizeY;
         this.sizeZ = sizeZ;
+
+        this.spawnX = this.sizeX / 2;
+        this.spawnY = 64;
+        this.spawnZ = this.sizeZ / 2;
 
         this.players = [];
         this.blocks = new Array(this.sizeX * this.sizeY * this.sizeZ);
@@ -43,6 +48,47 @@ class Level
         global.server.notifyPlayerRemoved(this, player);
     }
 
+    loadLevel()
+    {
+        var path = `levels/${this.levelName}.lvl`;
+        if (fs.existsSync(path))
+        {
+            var levelBuffer = fs.readFileSync(path);
+            this.sizeX = levelBuffer.readUInt16BE(0);
+            this.sizeY = levelBuffer.readUInt16BE(2);
+            this.sizeZ = levelBuffer.readUInt16BE(4);
+            this.decompressBlockData(levelBuffer.subarray(6));
+        }
+    }
+
+    saveLevel()
+    {
+        var dataBuffer = Buffer.alloc(6);
+        dataBuffer.writeUInt16BE(this.sizeX, 0);
+        dataBuffer.writeUInt16BE(this.sizeY, 2);
+        dataBuffer.writeUInt16BE(this.sizeZ, 4);
+        var finalData = Buffer.concat([dataBuffer, this.compressBlockData()]);
+        fs.writeFileSync(`levels/${this.levelName}.lvl`, finalData);
+    }
+
+    compressBlockData()
+    {
+        var sizeBuffer = Buffer.alloc(4);
+        sizeBuffer.writeUInt32BE(this.blocks.length);
+        var blockBuffer = Buffer.from(this.blocks);
+        var compressedBlocks = zlib.gzipSync(Buffer.concat([sizeBuffer, blockBuffer]), {level: -1});
+        return compressedBlocks;
+    }
+
+    decompressBlockData(compressedBlocks)
+    {
+        var decompressedBlocks = zlib.gunzipSync(compressedBlocks);
+        var blockSize = decompressedBlocks.readUInt32BE();
+        this.blocks = new Array(blockSize);
+        for (var i = 0; i < blockSize; i++)
+            this.blocks[i] = decompressedBlocks.readUInt8(4 + i);
+    }
+
     sendLevelData(netStream, player)
     {
         // level init
@@ -50,11 +96,7 @@ class Level
         netStream.sendPacket(player.socket);
 
         // compress block data
-        var sizeBuffer = Buffer.alloc(4);
-        sizeBuffer.writeUInt32BE(this.blocks.length);
-        var blockBuffer = Buffer.from(this.blocks);
-        var compressedBlocks = zlib.gzipSync(Buffer.concat([sizeBuffer, blockBuffer]), {level: -1});
-        //console.log(compressedBlocks.length);
+        var compressedBlocks = this.compressBlockData();
         
         // level chunks
         var chunkBuffer = Buffer.alloc(1024, 0x00);
@@ -85,45 +127,60 @@ class Level
         netStream.writeUShort(this.sizeZ);
         netStream.sendPacket(player.socket);
 
+        // first position
+        netStream.newPacket(PacketType.PlayerPosition);
+        netStream.writeByte(player.playerID);
+        netStream.writeUShort(this.spawnX);
+        netStream.writeUShort(this.spawnY);
+        netStream.writeUShort(this.spawnZ);
+        netStream.writeUByte(0);
+        netStream.writeUByte(0);
+
         // other players
-        /*
-        for (var player in this.players)
+        if (this.players.legnth > 0)
         {
-            if (player != user.player)
-            {
-                netStream.newPacket(PacketType.AddPlayer);
-                netStream.writeByte(player.user.userID);
-                netStream.writeString(player.user.username);
-                netStream.writeUShort(player.posX);
-                netStream.writeUShort(player.posY);
-                netStream.writeUShort(player.posZ);
-                netStream.writeByte(player.yaw);
-                netStream.writeByte(player.pitch);
-                netStream.sendPacket(user.socket);
-            }
+            for (var otherPlayer in this.players)
+                {
+                    if (otherPlayer != player)
+                    {
+                        netStream.newPacket(PacketType.AddPlayer);
+                        netStream.writeByte(otherPlayer.playerID);
+                        netStream.writeString(otherPlayer.username);
+                        netStream.writeUShort(otherPlayer.posX);
+                        netStream.writeUShort(otherPlayer.posY);
+                        netStream.writeUShort(otherPlayer.posZ);
+                        netStream.writeByte(otherPlayer.yaw);
+                        netStream.writeByte(otherPlayer.pitch);
+                        netStream.sendPacket(player.socket);
+                    }
+                }
         }
-        */
+    }
+
+    getFlatBlockAtY(y)
+    {
+        if (y == 0)
+            return 7;
+        else if (y > 0 && y < 29)
+            return 1;
+        else if (y > 28 && y < 31)
+            return 3;
+        else if (y == 31)
+            return 2;
+        else
+            return 0;
     }
 
     fillFlatGrass()
     {
         for (var x = 0; x < this.sizeX; x++)
         {
-            for (var y = 0; y < this.sizeY; y++)
+            for (var z = 0; z < this.sizeZ; z++)
             {
-                for (var z = 0; z < this.sizeZ; z++)
+                for (var y = 0; y < this.sizeY; y++)
                 {
-                    var block = 0;
-                    if (y == 0)
-                        block = 7;
-                    else if (y < 3)
-                        block = 1;
-                    else if (y < 5)
-                        block = 3;
-                    else if (y < 6)
-                        block = 2;
                     var index = this.flattenCoordinate(x, y, z);
-                    this.blocks[index] = block;
+                    this.blocks[index] = this.getFlatBlockAtY(y);
                 }
             }
         }

@@ -26,8 +26,7 @@ class Server
         this.properties = this.loadProperties('properties.json');
         this.serverKey = this.loadServerKey('SERVER_KEY');
         this.players = [];
-        this.levels = [new Level(0, 256, 64, 256), new Level(1, 64, 64, 64)];
-        this.levels[0].fillFlatGrass();
+        this.levels = this.loadLevels('levels');
 
         this.heartbeatInterval = null;
         this.updateInterval = null;
@@ -57,6 +56,32 @@ class Server
         else
             finalKey = fs.readFileSync(filePath);
         return finalKey;
+    }
+
+    loadLevels(dirPath)
+    {
+        if (!fs.existsSync(dirPath))
+            fs.mkdirSync(dirPath);
+        var dir = fs.readdirSync(dirPath);
+        var levels = {};
+        if (dir.length == 0)
+        {
+            var main = new Level("main", 256, 64, 256);
+            main.fillFlatGrass();
+            levels['main'] = main;
+            main.saveLevel();
+        }
+        else
+        {
+            for (var fileName of dir)
+            {
+                var lvlName = fileName.split('.')[0];
+                var lvl = new Level(lvlName, 0, 0, 0);
+                lvl.loadLevel();
+                levels[lvlName] = lvl;
+            }
+        }
+        return levels;
     }
 
     getCipherKeys()

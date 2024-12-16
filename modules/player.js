@@ -1,6 +1,8 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const PacketType = require('./packet.js').PacketType;
+const PacketError = require('./packet.js').PacketError;
+const PacketSerializer = require('./packet.js').PacketSerializer;
 const NetStream = require('./packet.js').NetStream;
 
 const PlayerState = {
@@ -36,6 +38,7 @@ class Player
 
         this.inStream = new NetStream();
         this.outStream = new NetStream();
+        this.packetSerializer = new PacketSerializer();
         this.clientSoftware = "Minecraft Classic 0.30";
         this.username = "";
         this.authKey = "";
@@ -116,7 +119,7 @@ class Player
         );
         global.server.notifyPlayerConnected(this);
         global.server.sendServerHandshake(this);
-        global.server.sendPlayerToLevel(this, 0);
+        global.server.sendPlayerToLevel(this, "main");
     }
 
     onDisconnect()
@@ -132,6 +135,7 @@ class Player
         };
         this.saveUserData(`users/${this.username}.json`, this.userData);
         global.server.notifyPlayerDisconnected(this);
+        this.currentLevel.removePlayer(this);
     }
 
     updatePositionAndRotation(x, y, z, pitch, yaw)
@@ -145,53 +149,72 @@ class Player
 
     handleData(data)
     {
-        while (this.inStream.getPosition() < data.length)
+        //console.log(data.length);
+        var dataView = new DataView(data.buffer);
+        //console.log(dataView.byteLength);
+        while (this.packetSerializer.position < data.length)
         {
-            var packetID = this.inStream.readByte(data);
-            if (packetID > 0x11 || packetID < 0)
+            var packet = this.packetSerializer.serializePacket(dataView);
+            console.log(packet);
+            if (packet.length == 2)
             {
-                this.disconnect(this.outStream, `Invalid packet 0x${packetID.toString('hex')}`);
+                this.handlePacketError(packet);
                 return;
             }
+
             //console.log(`Received packet ID 0x${packetID.toString(16)}`);
-            if (this.playerState == PlayerState.Connected && packetID != 0)
+            if (this.playerState == PlayerState.Connected && packet.id != 0)
             {
                 // was supposed to send a handshake...
                 this.socket.end();
                 this.playerState == PlayerState.Disconnected;
                 return;
             }
-            switch (packetID)
-            {		    
+
+            //console.log(packet);
+            switch (packet.id)
+            {
                 case PacketType.Handshake:
-                    this.handleHandshake(data);
+                    this.handleHandshake(packet.data);
                     break;
                 
-                case PacketType.Teleport:
-                    this.handlePosition(data);
+                case PacketType.PlayerPosition:
+                    this.handlePosition(packet.data);
                     break;
 
                 case PacketType.Message:
-                    this.handleMessage(data);
+                    this.handleMessage(packet.data);
                     break;
                 
                 case PacketType.SetBlockClient:
-                    this.handleSetBlock(data);
+                    this.handleSetBlock(packet.data);
                     break;
                 
                 case PacketType.ExtInfo:
-                    this.handleExtInfo(data);
+                    this.handleExtInfo(packet.data);
                     break;
                 
                 case PacketType.ExtEntry:
-                    this.handleExtEntry(data);
+                    this.handleExtEntry(packet.data);
                     break;
             }
-            this.outStream.reset();
-            //console.log(this.netStream.getPosition() + ' < ' + data.length);
         }
-        this.inStream.reset();
+        this.packetSerializer.reset();
         this.resetResponse();
+    }
+
+    handlePacketError(error)
+    {
+        switch (error[0])
+        {
+            case PacketError.InvalidID:
+                this.disconnect(this.outStream, `Invalid packet ${error[1]}`);
+                break;
+            
+            case PacketError.EndOfStream:
+                this.disconnect(this.outStream, `End of stream (reading packet ${error[1]})`);
+                break;
+        }
     }
 
     handleHandshake(data)
@@ -212,23 +235,21 @@ class Player
             return;
         }
 
-        var protocolVer = this.inStream.readByte(data);
-        if (protocolVer != 0x07)
+        if (data.protocolVersion != 0x07)
         {
             this.disconnect(this.outStream, "Unknown protocol version!");
             return;
         }
 
-        this.username = this.inStream.readString(data);
-        this.authKey = this.inStream.readString(data);
+        this.username = data.name;
+        this.authKey = data.extra;
         if (global.server.properties.password != "" && this.authKey != global.server.properties.password)
         {
             this.disconnect(this.outStream, "Invalid password!");
             return;
         }
 
-        var supportByte = this.inStream.readByte(data);
-        if (supportByte == 0x42)
+        if (data.supportByte == 0x42)
         {
             this.supportsCPE = true;
             this.extensionCount = 0;
@@ -252,24 +273,17 @@ class Player
 
     handlePosition(data)
     {
-        var playerId = this.inStream.readUByte(data);
-        var x = this.inStream.readUShort(data);
-        var y = this.inStream.readUShort(data);
-        var z = this.inStream.readUShort(data);
-        var yaw = this.inStream.readUByte(data);
-        var pitch = this.inStream.readUByte(data);
-        this.updatePositionAndRotation(x, y, z, pitch, yaw);
+        if (data.playerID == 0xFF)
+            this.updatePositionAndRotation(data.posX, data.posY, data.posZ, data.pitch, data.yaw);
     }
 
     handleMessage(data)
     {
-        var byte = this.inStream.readByte(data);
-        var str = this.inStream.readString(data);
-        console.log(`${this.username}: ${str}`);
-        if (str.startsWith('/'))
-            this.handleCommand(str.split(' '));
+        console.log(`${this.username}: ${data.message}`);
+        if (data.message.startsWith('/'))
+            this.handleCommand(data.message.split(' '));
         else
-            global.server.notifyPlayerMessage(this, str);
+            global.server.notifyPlayerMessage(this, data.message);
     }
 
     handleCommand(args)
@@ -277,7 +291,7 @@ class Player
         switch (args[0])
         {
             case '/level':
-                if (!global.server.sendPlayerToLevel(this, parseInt(args[1])))
+                if (!global.server.sendPlayerToLevel(this, args[1]))
                     this.sendMessage('&cYou are already in this level!');
                 break;
             
@@ -301,36 +315,23 @@ class Player
 
     handleSetBlock(data)
     {
-        // for now just echo it
-        var x = this.inStream.readUShort(data);
-        var y = this.inStream.readUShort(data);
-        var z = this.inStream.readUShort(data);
-        var mode = this.inStream.readUByte(data);
-        var blockType = this.inStream.readUByte(data);
-        console.log(`${x} ${y} ${z} ${mode} ${blockType}`);
-
-        var oldBlock = this.currentLevel.getBlock(x, y, z);
-        if (mode == 0x1)
+        if (data.mode == 0x1)
         {
-            this.currentLevel.setBlock(x, y, z, blockType);
-            global.server.notifyBlockPlaced(this, x, y, z, blockType);
+            this.currentLevel.setBlock(data.posX, data.posY, data.posZ, data.blockType);
+            global.server.notifyBlockPlaced(this, data.posX, data.posY, data.posZ, data.blockType);
             return;
         }
-        if (mode == 0x0 && oldBlock == blockType)
+        if (data.mode == 0x0)
         {
-            this.currentLevel.setBlock(x, y, z, 0);
-            global.server.notifyBlockRemoved(this, x, y, z);
-        }
-        else
-        {
-            console.log('Discrepancy detected');
+            this.currentLevel.setBlock(data.posX, data.posY, data.posZ, 0);
+            global.server.notifyBlockRemoved(this, data.posX, data.posY, data.posZ);
         }
     }
 
     handleExtInfo(data)
     {
-        this.clientSoftware = this.inStream.readString(data);
-        this.extensionCount = this.inStream.readUShort(data);
+        this.clientSoftware = data.software;
+        this.extensionCount = data.extensionCount;
         console.log(`Client software: ${this.clientSoftware}`);
         console.log(`Number of extensions: ${this.extensionCount}`);
         // no extensions supported...?
@@ -343,10 +344,8 @@ class Player
 
     handleExtEntry(data)
     {
-        var extensionName = this.inStream.readString(data);
-        var extensionVersion = this.inStream.readInt(data);
-        this.supportedExtensions.push(extensionName);
-        this.supportedExtensionVersions.push(extensionVersion);
+        this.supportedExtensions.push(data.extName);
+        this.supportedExtensionVersions.push(data.version);
         //console.log('Extension: ' + extensionName + ' (v' + extensionVersion + ')');
         this.extensionCount--;
         if (this.extensionCount == 0)
