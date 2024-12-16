@@ -162,7 +162,7 @@ class Player
             if (this.playerState == PlayerState.Connected && packet.id != 0)
             {
                 // was supposed to send a handshake...
-                this.disconnect('Invalid state!');
+                this.disconnect('You need to log in!');
                 return;
             }
 
