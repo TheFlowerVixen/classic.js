@@ -2,8 +2,8 @@ const crypto = require('crypto');
 const fs = require('fs');
 const PacketType = require('./packet.js').PacketType;
 const PacketError = require('./packet.js').PacketError;
+const PacketDeserializer = require('./packet.js').PacketDeserializer;
 const PacketSerializer = require('./packet.js').PacketSerializer;
-const NetStream = require('./packet.js').NetStream;
 
 const PlayerState = {
     Connected: 0,
@@ -36,8 +36,7 @@ class Player
         this.socket.on('data', this.handleData.bind(this));
         this.socket.on('error', this.handleError.bind(this));
 
-        this.inStream = new NetStream();
-        this.outStream = new NetStream();
+        this.packetDeserializer = new PacketDeserializer();
         this.packetSerializer = new PacketSerializer();
         this.clientSoftware = "Minecraft Classic 0.30";
         this.username = "";
@@ -149,13 +148,10 @@ class Player
 
     handleData(data)
     {
-        //console.log(data.length);
         var dataView = new DataView(data.buffer);
-        //console.log(dataView.byteLength);
-        while (this.packetSerializer.position < data.length)
+        while (this.packetDeserializer.position < data.length)
         {
-            var packet = this.packetSerializer.serializePacket(dataView);
-            console.log(packet);
+            var packet = this.packetDeserializer.deserializePacket(dataView);
             if (packet.length == 2)
             {
                 this.handlePacketError(packet);
@@ -166,12 +162,10 @@ class Player
             if (this.playerState == PlayerState.Connected && packet.id != 0)
             {
                 // was supposed to send a handshake...
-                this.socket.end();
-                this.playerState == PlayerState.Disconnected;
+                this.disconnect('Invalid state!');
                 return;
             }
 
-            //console.log(packet);
             switch (packet.id)
             {
                 case PacketType.Handshake:
@@ -199,7 +193,7 @@ class Player
                     break;
             }
         }
-        this.packetSerializer.reset();
+        this.packetDeserializer.reset();
         this.resetResponse();
     }
 
@@ -208,11 +202,11 @@ class Player
         switch (error[0])
         {
             case PacketError.InvalidID:
-                this.disconnect(this.outStream, `Invalid packet ${error[1]}`);
+                this.disconnect(`Invalid packet ${error[1]}`);
                 break;
             
             case PacketError.EndOfStream:
-                this.disconnect(this.outStream, `End of stream (reading packet ${error[1]})`);
+                this.disconnect(`End of stream (reading packet ${error[1]})`);
                 break;
         }
     }
@@ -231,13 +225,13 @@ class Player
 
         if (global.server.getPlayerCount() > global.server.properties.maxPlayers)
         {
-            this.disconnect(this.outStream, "Server is full!");
+            this.disconnect("Server is full!");
             return;
         }
 
         if (data.protocolVersion != 0x07)
         {
-            this.disconnect(this.outStream, "Unknown protocol version!");
+            this.disconnect("Unknown protocol version!");
             return;
         }
 
@@ -245,7 +239,7 @@ class Player
         this.authKey = data.extra;
         if (global.server.properties.password != "" && this.authKey != global.server.properties.password)
         {
-            this.disconnect(this.outStream, "Invalid password!");
+            this.disconnect("Invalid password!");
             return;
         }
 
@@ -256,7 +250,7 @@ class Player
         }
         else if (global.server.properties.disallowVanillaClients)
         {
-            this.disconnect(this.outStream, "Your client is unsupported!");
+            this.disconnect("Your client is unsupported!");
             return;
         }
 
@@ -309,6 +303,10 @@ class Player
                     this.localChat = false;
                     this.sendMessage('&eYou are now chatting globally');
                 }
+                break;
+            
+            case '/leave':
+                this.disconnect('See ya!');
                 break;
         }
     }
@@ -375,10 +373,10 @@ class Player
 
     disconnect(reason)
     {
-        this.outStream.newPacket(PacketType.DisconnectPlayer);
-        this.outStream.writeString(reason);
-        this.outStream.sendPacket(this.socket);
-        this.socket.end();
+        var disconnectPacket = this.packetSerializer.serializePacket(PacketType.DisconnectPlayer, {
+            reason: reason
+        });
+        this.socket.write(disconnectPacket);
     }
 
     isLoggedIn()
@@ -399,16 +397,17 @@ class Player
                 this.currentLevel.removePlayer(this);
             this.currentLevel = level;
             level.addPlayer(this);
-            level.sendLevelData(this.outStream, this);
+            level.sendLevelData(this.packetSerializer, this);
         }
     }
 
     sendMessage(message)
     {
-        this.outStream.newPacket(PacketType.Message);
-        this.outStream.writeByte(0x0);
-        this.outStream.writeString(message);
-        this.outStream.sendPacket(this.socket);
+        var messagePacket = this.packetSerializer.serializePacket(PacketType.Message, {
+            playerID: 0x0,
+            message: message
+        });
+        this.socket.write(messagePacket);
     }
 }
 

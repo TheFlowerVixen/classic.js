@@ -1,8 +1,8 @@
 const net = require('node:net');
 const fs = require('fs');
 const crypto = require('crypto');
-const NetStream = require('./packet.js').NetStream;
 const PacketType = require('./packet.js').PacketType;
+const PacketSerializer = require('./packet.js').PacketSerializer;
 const Player = require('./player.js').Player;
 const Level = require('./game/level.js').Level;
 
@@ -20,7 +20,7 @@ class Server
 {
     constructor()
     {
-        this.outStream = new NetStream();
+        this.packetSerializer = new PacketSerializer();
         this.netServer = null;
         
         this.properties = this.loadProperties('properties.json');
@@ -76,7 +76,7 @@ class Server
             for (var fileName of dir)
             {
                 var lvlName = fileName.split('.')[0];
-                var lvl = new Level(lvlName, 0, 0, 0);
+                var lvl = new Level(lvlName);
                 lvl.loadLevel();
                 levels[lvlName] = lvl;
             }
@@ -139,10 +139,7 @@ class Server
         for (var player of this.players)
         {
             if (player.isLoggedIn() && !player.isDisconnected())
-            {
-                this.outStream.newPacket(PacketType.ClientPing);
-                this.outStream.sendPacket(player.socket);
-            }
+                player.socket.write(this.packetSerializer.serializePacket(PacketType.ClientPing, {}));
         }
     }
 
@@ -158,28 +155,30 @@ class Server
             }
             if (!player.tickResponse())
             {
-                player.disconnect(this.outStream, 'Timed out');
+                player.disconnect('Timed out');
             }
         }
     }
 
     sendServerHandshake(player)
     {
-        this.outStream.newPacket(PacketType.Handshake);
-        this.outStream.writeByte(0x07);
-        this.outStream.writeString(this.properties.serverName);
-        this.outStream.writeString(this.properties.motd);
-        this.outStream.writeByte(0);
-        this.outStream.sendPacket(player.socket);
+        var handshake = this.packetSerializer.serializePacket(PacketType.Handshake, {
+            protocolVersion: 0x07,
+            name: this.properties.serverName,
+            extra: this.properties.motd,
+            supportByte: 0x0
+        });
+        player.socket.write(handshake);
     }
 
     sendExtensionInfo(player)
     {
         // info
-        this.outStream.newPacket(PacketType.ExtInfo);
-        this.outStream.writeString("classic.js Alpha 0");
-        this.outStream.writeUShort(0);
-        this.outStream.sendPacket(player.socket);
+        var extensionInfo = this.packetSerializer.serializePacket(PacketType.ExtInfo, {
+           software: "classic.js Alpha 0",
+           extensionCount: 0 
+        });
+        player.socket.write(extensionInfo);
     }
 
     sendPlayerToLevel(player, level)
@@ -220,32 +219,32 @@ class Server
 
     notifyPlayerAdded(level, player)
     {
-        this.outStream.newPacket(PacketType.AddPlayer);
-        this.outStream.writeByte(player.playerID);
-        this.outStream.writeString(player.username);
-        this.outStream.writeUShort(player.posX);
-        this.outStream.writeUShort(player.posY);
-        this.outStream.writeUShort(player.posZ);
-        this.outStream.writeUByte(player.yaw);
-        this.outStream.writeUByte(player.pitch);
+        var playerAdd = this.packetSerializer.serializePacket(PacketType.AddPlayer, {
+            playerID: player.playerID,
+            playerName: player.username,
+            posX: player.posX,
+            posY: player.posY,
+            posZ: player.posZ,
+            yaw: player.yaw,
+            pitch: player.yaw
+        });
         for (var otherPlayer of this.players)
         {
             if (otherPlayer !== player && otherPlayer.currentLevel === level)
-                this.outStream.sendPacket(otherPlayer.socket);
+                otherPlayer.socket.write(playerAdd);
         }
-        this.outStream.reset();
     }
 
     notifyPlayerRemoved(level, player)
     {
-        this.outStream.newPacket(PacketType.RemovePlayer);
-        this.outStream.writeByte(player.playerID);
+        var playerRemove = this.packetSerializer.serializePacket(PacketType.RemovePlayer, {
+            playerID: player.playerID
+        });
         for (var otherPlayer of this.players)
         {
             if (otherPlayer !== player && otherPlayer.currentLevel === level)
-                this.outStream.sendPacket(otherPlayer.socket);
+                otherPlayer.socket.write(playerRemove);
         }
-        this.outStream.reset();
     }
 
     notifyPlayerMessage(player, message)
@@ -265,12 +264,13 @@ class Server
         {
             if (otherPlayer.currentLevel === player.currentLevel)
             {
-                this.outStream.newPacket(PacketType.SetBlockServer);
-                this.outStream.writeUShort(x);
-                this.outStream.writeUShort(y);
-                this.outStream.writeUShort(z);
-                this.outStream.writeUByte(type);
-                this.outStream.sendPacket(otherPlayer.socket);
+                var setBlock = this.packetSerializer.serializePacket(PacketType.SetBlockServer, {
+                    posX: x,
+                    posY: y,
+                    posZ: z,
+                    blockType: type
+                });
+                otherPlayer.socket.write(setBlock);
             }
         }
     }
@@ -281,12 +281,13 @@ class Server
         {
             if (otherPlayer.currentLevel === player.currentLevel)
             {
-                this.outStream.newPacket(PacketType.SetBlockServer);
-                this.outStream.writeUShort(x);
-                this.outStream.writeUShort(y);
-                this.outStream.writeUShort(z);
-                this.outStream.writeUByte(0);
-                this.outStream.sendPacket(otherPlayer.socket);
+                var setBlock = this.packetSerializer.serializePacket(PacketType.SetBlockServer, {
+                    posX: x,
+                    posY: y,
+                    posZ: z,
+                    blockType: 0
+                });
+                otherPlayer.socket.write(setBlock);
             }
         }
     }

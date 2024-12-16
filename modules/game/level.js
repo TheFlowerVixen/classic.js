@@ -4,7 +4,7 @@ const PacketType = require('../packet.js').PacketType;
 
 class Level
 {
-    constructor(levelName, sizeX, sizeY, sizeZ)
+    constructor(levelName, sizeX = 0, sizeY = 0, sizeZ = 0)
     {    
         this.levelName = levelName;
         this.sizeX = sizeX;
@@ -89,11 +89,10 @@ class Level
             this.blocks[i] = decompressedBlocks.readUInt8(4 + i);
     }
 
-    sendLevelData(netStream, player)
+    sendLevelData(packetSerializer, player)
     {
         // level init
-        netStream.newPacket(PacketType.LevelInit);
-        netStream.sendPacket(player.socket);
+        player.socket.write(packetSerializer.serializePacket(PacketType.LevelInit, {}));
 
         // compress block data
         var compressedBlocks = this.compressBlockData();
@@ -108,12 +107,13 @@ class Level
         {
             chunkSize = Math.min(remainingBlocks, chunkBuffer.length);
             compressedBlocks.copy(chunkBuffer, 0, position, chunkSize);
-
-            netStream.newPacket(PacketType.LevelChunk);
-            netStream.writeUShort(chunkSize);
-            netStream.write(chunkBuffer);
-            netStream.writeUByte((position + chunkSize) * 100 / compressedBlocks.length);
-            netStream.sendPacket(player.socket);
+            
+            var chunkPacket = packetSerializer.serializePacket(PacketType.LevelChunk, {
+                chunkLength: chunkSize,
+                chunkData: chunkBuffer,
+                percentComplete: (position + chunkSize) * 100 / compressedBlocks.length
+            })
+            player.socket.write(chunkPacket);
 
             chunkBuffer.fill(0x00);
             remainingBlocks -= chunkSize;
@@ -121,40 +121,45 @@ class Level
         }
 
         // level finalize
-        netStream.newPacket(PacketType.LevelEnd);
-        netStream.writeUShort(this.sizeX);
-        netStream.writeUShort(this.sizeY);
-        netStream.writeUShort(this.sizeZ);
-        netStream.sendPacket(player.socket);
+        var finalPacket = packetSerializer.serializePacket(PacketType.LevelEnd, {
+            sizeX: this.sizeX,
+            sizeY: this.sizeY,
+            sizeZ: this.sizeZ
+        });
+        player.socket.write(finalPacket);
 
         // first position
-        netStream.newPacket(PacketType.PlayerPosition);
-        netStream.writeByte(player.playerID);
-        netStream.writeUShort(this.spawnX);
-        netStream.writeUShort(this.spawnY);
-        netStream.writeUShort(this.spawnZ);
-        netStream.writeUByte(0);
-        netStream.writeUByte(0);
+        var positionPacket = packetSerializer.serializePacket(PacketType.PlayerPosition, {
+            playerID: player.playerID,
+            posX: this.spawnX,
+            posY: this.spawnY,
+            posZ: this.spawnZ,
+            yaw: 0,
+            pitch: 0
+        });
+        player.socket.write(positionPacket);
 
         // other players
-        if (this.players.legnth > 0)
+        /*
+        if (this.players.length > 0)
         {
             for (var otherPlayer in this.players)
+            {
+                if (otherPlayer != player)
                 {
-                    if (otherPlayer != player)
-                    {
-                        netStream.newPacket(PacketType.AddPlayer);
-                        netStream.writeByte(otherPlayer.playerID);
-                        netStream.writeString(otherPlayer.username);
-                        netStream.writeUShort(otherPlayer.posX);
-                        netStream.writeUShort(otherPlayer.posY);
-                        netStream.writeUShort(otherPlayer.posZ);
-                        netStream.writeByte(otherPlayer.yaw);
-                        netStream.writeByte(otherPlayer.pitch);
-                        netStream.sendPacket(player.socket);
-                    }
+                    netStream.newPacket(PacketType.AddPlayer);
+                    netStream.writeByte(otherPlayer.playerID);
+                    netStream.writeString(otherPlayer.username);
+                    netStream.writeUShort(otherPlayer.posX);
+                    netStream.writeUShort(otherPlayer.posY);
+                    netStream.writeUShort(otherPlayer.posZ);
+                    netStream.writeByte(otherPlayer.yaw);
+                    netStream.writeByte(otherPlayer.pitch);
+                    netStream.sendPacket(player.socket);
                 }
+            }
         }
+        */
     }
 
     getFlatBlockAtY(y)
