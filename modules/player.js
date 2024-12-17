@@ -2,8 +2,8 @@ const crypto = require('crypto');
 const fs = require('fs');
 const PacketType = require('./packet.js').PacketType;
 const PacketError = require('./packet.js').PacketError;
-const PacketDeserializer = require('./packet.js').PacketDeserializer;
-const PacketSerializer = require('./packet.js').PacketSerializer;
+const serializePacket = require('./packet.js').serializePacket;
+const deserializePacket = require('./packet.js').deserializePacket;
 
 const PlayerState = {
     Connected: 0,
@@ -26,6 +26,53 @@ const DefaultUserData = {
     }
 }
 
+class PlayerPosition
+{
+    constructor(posX, posY, posZ, pitch, yaw)
+    {
+        this.posX = posX;
+        this.posY = posY;
+        this.posZ = posZ;
+        this.pitch = pitch;
+        this.yaw = yaw;
+    }
+    
+    positionEquals(otherPos)
+    {
+        return this.posX == otherPos.posX && this.posY == otherPos.posY && this.posZ == otherPos.posZ;
+    }
+
+    rotationEquals(otherPos)
+    {
+        return this.pitch == otherPos.pitch && this.yaw == otherPos.yaw;
+    }
+
+    posXDifference(otherPos)
+    {
+        return otherPos.posX - this.posX;
+    }
+
+    posYDifference(otherPos)
+    {
+        return otherPos.posY - this.posY;
+    }
+
+    posZDifference(otherPos)
+    {
+        return otherPos.posZ - this.posZ;
+    }
+
+    pitchDifference(otherPos)
+    {
+        return otherPos.pitch - this.pitch;
+    }
+
+    yawDifference(otherPos)
+    {
+        return otherPos.yaw - this.yaw;
+    }
+}
+
 class Player
 {
     constructor(playerID, socket)
@@ -36,8 +83,6 @@ class Player
         this.socket.on('data', this.handleData.bind(this));
         this.socket.on('error', this.handleError.bind(this));
 
-        this.packetDeserializer = new PacketDeserializer();
-        this.packetSerializer = new PacketSerializer();
         this.clientSoftware = "Minecraft Classic 0.30";
         this.username = "";
         this.authKey = "";
@@ -45,11 +90,8 @@ class Player
         this.currentLevel = null;
         this.localChat = false;
 
-        this.posX = 0.0;
-        this.posY = 0.0;
-        this.posZ = 0.0;
-        this.pitch = 0.0;
-        this.yaw = 0.0;
+        this.position = new PlayerPosition(0.0, 0.0, 0.0, 0.0, 0.0);
+        this.lastPosition = this.position;
 
         this.responseTime = 0;
         this.playerState = PlayerState.Connected;
@@ -110,9 +152,9 @@ class Player
         this.userData = this.loadUserData(`users/${this.username}.json`);
         this.playerState = PlayerState.LoggedIn;
         this.updatePositionAndRotation(
-            this.userData.lastPosition.x,
-            this.userData.lastPosition.y,
-            this.userData.lastPosition.z,
+            this.userData.lastPosition.posX,
+            this.userData.lastPosition.posY,
+            this.userData.lastPosition.posZ,
             this.userData.lastPosition.pitch,
             this.userData.lastPosition.yaw
         );
@@ -125,33 +167,30 @@ class Player
     {
         console.log(`Player id ${this.playerID} disconnected`);
         this.playerState == PlayerState.Disconnected;
-        this.userData.lastPosition = {
-            x: this.posX,
-            y: this.posY,
-            z: this.posZ,
-            pitch: this.pitch,
-            yaw: this.yaw
-        };
-        this.saveUserData(`users/${this.username}.json`, this.userData);
+        if (this.userData != null)
+        {
+            this.userData.lastPosition = this.position;
+            this.saveUserData(`users/${this.username}.json`, this.userData);
+        }
         global.server.notifyPlayerDisconnected(this);
         this.currentLevel.removePlayer(this);
     }
 
     updatePositionAndRotation(x, y, z, pitch, yaw)
     {
-        this.posX = x;
-        this.posY = y;
-        this.posZ = z;
-        this.pitch = pitch;
-        this.yaw = yaw;
+        this.lastPosition = this.position;
+        this.position = new PlayerPosition(x, y, z, pitch, yaw);
     }
 
     handleData(data)
     {
-        var dataView = new DataView(data.buffer);
-        while (this.packetDeserializer.position < data.length)
+        var offset = 0;
+        while (offset < data.length)
         {
-            var packet = this.packetDeserializer.deserializePacket(dataView);
+            var packet = deserializePacket(data, offset);
+            offset += packet.size;
+            
+            // error check
             if (packet.length == 2)
             {
                 this.handlePacketError(packet);
@@ -193,7 +232,6 @@ class Player
                     break;
             }
         }
-        this.packetDeserializer.reset();
         this.resetResponse();
     }
 
@@ -268,7 +306,10 @@ class Player
     handlePosition(data)
     {
         if (data.playerID == 0xFF)
+        {
             this.updatePositionAndRotation(data.posX, data.posY, data.posZ, data.pitch, data.yaw);
+            global.server.notifyPlayerPosition(this);
+        }
     }
 
     handleMessage(data)
@@ -307,6 +348,21 @@ class Player
             
             case '/leave':
                 this.disconnect('See ya!');
+                break;
+            
+            case '/tp':
+                var x = parseInt(args[1]);
+                var y = parseInt(args[2]);
+                var z = parseInt(args[3]);
+                var tpPacket = serializePacket(PacketType.PlayerPosition, {
+                    playerID: -1,
+                    posX: x,
+                    posY: y,
+                    posZ: z,
+                    yaw: 0,
+                    pitch: 0
+                });
+                this.socket.write(tpPacket);
                 break;
         }
     }
@@ -373,7 +429,7 @@ class Player
 
     disconnect(reason)
     {
-        var disconnectPacket = this.packetSerializer.serializePacket(PacketType.DisconnectPlayer, {
+        var disconnectPacket = serializePacket(PacketType.DisconnectPlayer, {
             reason: reason
         });
         this.socket.write(disconnectPacket);
@@ -397,13 +453,13 @@ class Player
                 this.currentLevel.removePlayer(this);
             this.currentLevel = level;
             level.addPlayer(this);
-            level.sendLevelData(this.packetSerializer, this);
+            level.sendLevelData(this);
         }
     }
 
     sendMessage(message)
     {
-        var messagePacket = this.packetSerializer.serializePacket(PacketType.Message, {
+        var messagePacket = serializePacket(PacketType.Message, {
             playerID: 0x0,
             message: message
         });

@@ -15,6 +15,28 @@ const PacketError = {
 	EndOfStream: 1
 }
 
+const PacketType = {
+	Handshake: 0x00,
+	ClientPing: 0x01,
+	LevelInit: 0x02,
+	LevelChunk: 0x03,
+	LevelEnd: 0x04,
+	SetBlockClient: 0x05,
+	SetBlockServer: 0x06,
+	AddPlayer: 0x07,
+	PlayerPosition: 0x08,
+	PosRotUpdate: 0x09,
+	PosUpdate: 0x0A,
+	RotUpdate: 0x0B,
+	RemovePlayer: 0x0C,
+	Message: 0x0D,
+	DisconnectPlayer: 0x0E,
+	OpUser: 0x0F,
+
+	ExtInfo: 0x10,
+	ExtEntry: 0x11
+}
+
 const PacketData = [
 	// Handshake:
 	{
@@ -120,190 +142,91 @@ const PacketData = [
 	// ExtEntry:
 	{
 		extName: DataType.String,
-		version: DataType.UInt,
-		pad: DataType.UShort
+		version: DataType.UInt
 	}
 ]
 
-class PacketDeserializer
+class NetStream
 {
-	constructor()
+	constructor(buf, offset)
 	{
-		this.position = 0;
+		this.buf = buf
+		this.chunks = [];
+		this.position = offset;
 	}
 
-	deserializePacket(dataView)
+	increasePosition(by)
 	{
-		if (this.checkEndOfStream(dataView, 1))
-			return [PacketError.EndOfStream, null];
-		
-		const packetID = dataView.getUint8(this.position++);
-		const packetType = PacketData[packetID];
-		if (packetType == undefined)
-			return [PacketError.InvalidID, packetID];
-
-		var packet = {
-			id: packetID,
-			data: {}
-		};
-		for (const [key, value] of Object.entries(packetType))
-		{
-			switch (value)
-			{
-				case DataType.Byte:
-					if (this.checkEndOfStream(dataView, 1))
-						return [PacketError.EndOfStream, packetID];
-					packet.data[key] = dataView.getInt8(this.position);
-					this.position += 1;
-					break;
-				
-				case DataType.UByte:
-					if (this.checkEndOfStream(dataView, 1))
-						return [PacketError.EndOfStream, packetID];
-					packet.data[key] = dataView.getUint8(this.position);
-					this.position += 1;
-					break;
-				
-				case DataType.UInt:
-					if (this.checkEndOfStream(dataView, 2))
-						return [PacketError.EndOfStream, packetID];
-					packet.data[key] = dataView.getUint32(this.position);
-					this.position += 2;
-					break;
-				
-				case DataType.UShort:
-					if (this.checkEndOfStream(dataView, 2))
-						return [PacketError.EndOfStream, packetID];
-					packet.data[key] = dataView.getUint16(this.position);
-					this.position += 2;
-					break;
-				
-				case DataType.Fixed:
-					if (this.checkEndOfStream(dataView, 2))
-						return [PacketError.EndOfStream, packetID];
-					packet.data[key] = this.readFixed(dataView, this.position);
-					this.position += 2;
-					break;
-				
-				case DataType.String:
-					if (this.checkEndOfStream(dataView, 64))
-						return [PacketError.EndOfStream, packetID];
-					packet.data[key] = this.readString(dataView, this.position);
-					this.position += 64;
-					break;
-				
-				case DataType.ByteArray:
-					if (this.checkEndOfStream(dataView, 1024))
-						return [PacketError.EndOfStream, packetID];
-					packet.data[key] = this.readByteArray(dataView, this.position);
-					this.position += 1024;
-					break;
-			}
-			//console.log(`${this.position}, ${dataView.byteLength}`);
-		}
-		return packet;
+		var prevPosition = this.position;
+		this.position += by;
+		return prevPosition;
+	}
+	
+	writeByte(b)
+	{
+		var buffer = Buffer.alloc(1);
+		buffer.writeInt8(b & 0xFF);
+		this.chunks.push(buffer);
 	}
 
-	checkEndOfStream(dataView, size)
+	readByte()
 	{
-		return this.position + size > dataView.byteLength;
+		return this.buf.readInt8(this.increasePosition(1));
 	}
 
-	readFixed(dataView)
+	writeUByte(b)
 	{
-		return 0;
+		var buffer = Buffer.alloc(1);
+		buffer.writeUInt8(b & 0xFF);
+		this.chunks.push(buffer);
 	}
 
-	readString(dataView)
+	readUByte()
 	{
-		var finalString = "";
-		for (var i = 0; i < 64; i++)
-			finalString += String.fromCharCode(dataView.getInt8(this.position + i));
-		return finalString.trimEnd();
+		return this.buf.readUInt8(this.increasePosition(1));
 	}
 
-	readByteArray(dataView)
+	writeFixed(f)
 	{
-		var array = new Array(1024);
-		for (var i = 0; i < array.length; i++)
-			array[i] = dataView.getInt8(this.position + i);
-		return array;
+		var dec = Math.floor(f);
+		var frac = f - dec;
+		var fixed = (dec << 5) & 0xFFE0 || Math.floor(0x1F * frac) & 0x1F;
+
+		var buffer = Buffer.alloc(2);
+		buffer.writeInt16BE(fixed);
+		this.chunks.push(buffer);
 	}
 
-	reset()
+	readFixed()
 	{
-		this.position = 0;
-	}
-}
-
-class PacketSerializer
-{
-	constructor()
-	{
-		this.position = 0;
+		var fixed = this.buf.readInt16BE(this.increasePosition(2));
+		var dec = (fixed >> 5) & 0x7FF;
+		var frac = (fixed & 0x1F) / 31.0;
+		return dec + frac;
 	}
 
-	serializePacket(packetID, data)
-	{
-		const packetType = PacketData[packetID];
-		if (packetType == undefined)
-			return [PacketError.InvalidID, packetID];
-
-		var chunks = [];
-		var idBuf = Buffer.alloc(1);
-		idBuf.writeUInt8(packetID);
-		chunks.push(idBuf);
-		for (const [key, value] of Object.entries(packetType))
-		{
-			var buffer = null;
-			switch (value)
-			{
-				case DataType.Byte:
-					var buffer = Buffer.alloc(1);
-					buffer.writeInt8(data[key]);
-					chunks.push(buffer);
-					break;
-				
-				case DataType.UByte:
-					var buffer = Buffer.alloc(1);
-					buffer.writeUInt8(data[key]);
-					chunks.push(buffer);
-					break;
-				
-				case DataType.UInt:
-					var buffer = Buffer.alloc(4);
-					buffer.writeUInt32BE(data[key]);
-					chunks.push(buffer);
-					break;
-				
-				case DataType.UShort:
-					var buffer = Buffer.alloc(2);
-					buffer.writeUInt16BE(data[key]);
-					chunks.push(buffer);
-					break;
-				
-				case DataType.Fixed:
-					chunks.push(this.writeFixed(data[key]));
-					break;
-				
-				case DataType.String:
-					chunks.push(this.writeString(data[key]));
-					break;
-				
-				case DataType.ByteArray:
-					chunks.push(this.writeByteArray(data[key]));
-					break;
-			}
-		}
-
-		return Buffer.concat(chunks);
-	}
-
-	writeFixed(value)
+	writeUShort(s)
 	{
 		var buffer = Buffer.alloc(2);
-		buffer.writeUInt16BE(value);
-		return buffer;
+		buffer.writeUInt16BE(s & 0xFFFF);
+		this.chunks.push(buffer);
+	}
+
+	readUShort()
+	{
+		return this.buf.readUInt16BE(this.increasePosition(2));
+	}
+
+	writeUInt(i)
+	{
+		var buffer = Buffer.alloc(4);
+		buffer.writeUInt32BE(i & 0xFFFFFFFF);
+		this.chunks.push(buffer);
+	}
+
+	readUInt()
+	{
+		return this.buf.readUInt32BE(this.increasePosition(4));
 	}
 
 	writeString(string)
@@ -312,7 +235,15 @@ class PacketSerializer
 		var offs = 0;
 		for (var i = 0; i < Math.min(string.length, buffer.length); i++)
 			offs = buffer.writeUInt8(string.charCodeAt(i), offs);
-		return buffer;
+		this.chunks.push(buffer);
+	}
+
+	readString()
+	{
+		var finalString = "";
+		for (var i = 0; i < 64; i++)
+			finalString += String.fromCharCode(this.buf.readInt8(this.increasePosition(1)));
+		return finalString.trimEnd();
 	}
 
 	writeByteArray(array)
@@ -321,31 +252,151 @@ class PacketSerializer
 		var offs = 0;
 		for (var i = 0; i < Math.min(array.length, buffer.length); i++)
 			offs = buffer.writeUInt8(array[i], offs);
-		return buffer;
+		this.chunks.push(buffer);
+	}
+
+	readByteArray()
+	{
+		var array = new Array(1024);
+		for (var i = 0; i < array.length; i++)
+			array[i] = this.buf.getInt8(this.increasePosition(1));
+		return array;
+	}
+
+	checkEndOfStream(offset)
+	{
+		return this.position + offset > this.buf.length;
+	}
+
+	getPosition()
+	{
+		return this.position;
+	}
+
+	setPosition(pos)
+	{
+		this.position = pos;
+	}
+
+	getData()
+	{
+		return Buffer.concat(this.chunks);
 	}
 }
 
-const PacketType = {
-	Handshake: 0x00,
-	ClientPing: 0x01,
-	LevelInit: 0x02,
-	LevelChunk: 0x03,
-	LevelEnd: 0x04,
-	SetBlockClient: 0x05,
-	SetBlockServer: 0x06,
-	AddPlayer: 0x07,
-	PlayerPosition: 0x08,
-	PosRotUpdate: 0x09,
-	PosUpdate: 0x0A,
-	RotUpdate: 0x0B,
-	RemovePlayer: 0x0C,
-	Message: 0x0D,
-	DisconnectPlayer: 0x0E,
-	OpUser: 0x0F,
+function deserializePacket(data, offset)
+{
+	var netStream = new NetStream(data, offset);
 
-	ExtInfo: 0x10,
-	ExtEntry: 0x11
+	if (netStream.checkEndOfStream(1))
+		return [PacketError.EndOfStream, null];
+	const packetID = netStream.readUByte();
+
+	const packetType = PacketData[packetID];
+	if (packetType == undefined)
+		return [PacketError.InvalidID, packetID];
+
+	var packet = {
+		id: packetID,
+		data: {},
+		size: 0
+	};
+	for (const [key, value] of Object.entries(packetType))
+	{
+		switch (value)
+		{
+			case DataType.Byte:
+				if (netStream.checkEndOfStream(1))
+					return [PacketError.EndOfStream, packetID];
+				packet.data[key] = netStream.readByte();
+				break;
+			
+			case DataType.UByte:
+				if (netStream.checkEndOfStream(1))
+					return [PacketError.EndOfStream, packetID];
+				packet.data[key] = netStream.readUByte();
+				break;
+			
+			case DataType.UInt:
+				if (netStream.checkEndOfStream(2))
+					return [PacketError.EndOfStream, packetID];
+				packet.data[key] = netStream.readUInt();
+				break;
+			
+			case DataType.UShort:
+				if (netStream.checkEndOfStream(2))
+					return [PacketError.EndOfStream, packetID];
+				packet.data[key] = netStream.readUShort();
+				break;
+			
+			case DataType.Fixed:
+				if (netStream.checkEndOfStream(2))
+					return [PacketError.EndOfStream, packetID];
+				packet.data[key] = netStream.readFixed();
+				break;
+			
+			case DataType.String:
+				if (netStream.checkEndOfStream(64))
+					return [PacketError.EndOfStream, packetID];
+				packet.data[key] = netStream.readString();
+				break;
+			
+			case DataType.ByteArray:
+				if (netStream.checkEndOfStream(1024))
+					return [PacketError.EndOfStream, packetID];
+				packet.data[key] = netStream.readByteArray();
+				break;
+		}
+	}
+	packet.size = netStream.getPosition() - offset;
+	return packet;
 }
 
-module.exports = { PacketType, PacketError, PacketDeserializer, PacketSerializer };
+function serializePacket(packetID, data)
+{
+	var netStream = new NetStream(); // for writing
+
+	const packetType = PacketData[packetID];
+	if (packetType == undefined)
+		return [PacketError.InvalidID, packetID];
+
+	netStream.writeUByte(packetID);
+	for (const [key, value] of Object.entries(packetType))
+	{
+		switch (value)
+		{
+			case DataType.Byte:
+				netStream.writeByte(data[key]);
+				break;
+			
+			case DataType.UByte:
+				netStream.writeUByte(data[key]);
+				break;
+			
+			case DataType.UInt:
+				netStream.writeUInt(data[key]);
+				break;
+			
+			case DataType.UShort:
+				netStream.writeUShort(data[key]);
+				break;
+			
+			case DataType.Fixed:
+				netStream.writeFixed(data[key]); // TODO: replace with fixed-point conversion
+				break;
+			
+			case DataType.String:
+				netStream.writeString(data[key]);
+				break;
+			
+			case DataType.ByteArray:
+				netStream.writeByteArray(data[key]);
+				break;
+		}
+	}
+
+	return netStream.getData();
+}
+
+module.exports = { PacketType, PacketError, serializePacket, deserializePacket };
 

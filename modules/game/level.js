@@ -1,6 +1,7 @@
 const zlib = require('node:zlib');
 const fs = require('fs');
 const PacketType = require('../packet.js').PacketType;
+const serializePacket = require('../packet.js').serializePacket;
 
 class Level
 {
@@ -37,7 +38,7 @@ class Level
     addPlayer(player)
     {
         this.players.push(player);
-        global.server.notifyPlayerAdded(this, player);
+        global.server.notifyPlayerAdded(player);
     }
 
     removePlayer(player)
@@ -45,7 +46,7 @@ class Level
         var playerIndex = this.players.indexOf(player);
         if (playerIndex > -1)
             this.players.splice(playerIndex);
-        global.server.notifyPlayerRemoved(this, player);
+        global.server.notifyPlayerRemoved(player);
     }
 
     loadLevel()
@@ -89,10 +90,10 @@ class Level
             this.blocks[i] = decompressedBlocks.readUInt8(4 + i);
     }
 
-    sendLevelData(packetSerializer, player)
+    sendLevelData(player)
     {
         // level init
-        player.socket.write(packetSerializer.serializePacket(PacketType.LevelInit, {}));
+        player.socket.write(serializePacket(PacketType.LevelInit, {}));
 
         // compress block data
         var compressedBlocks = this.compressBlockData();
@@ -108,7 +109,7 @@ class Level
             chunkSize = Math.min(remainingBlocks, chunkBuffer.length);
             compressedBlocks.copy(chunkBuffer, 0, position, chunkSize);
             
-            var chunkPacket = packetSerializer.serializePacket(PacketType.LevelChunk, {
+            var chunkPacket = serializePacket(PacketType.LevelChunk, {
                 chunkLength: chunkSize,
                 chunkData: chunkBuffer,
                 percentComplete: (position + chunkSize) * 100 / compressedBlocks.length
@@ -121,7 +122,7 @@ class Level
         }
 
         // level finalize
-        var finalPacket = packetSerializer.serializePacket(PacketType.LevelEnd, {
+        var finalPacket = serializePacket(PacketType.LevelEnd, {
             sizeX: this.sizeX,
             sizeY: this.sizeY,
             sizeZ: this.sizeZ
@@ -129,8 +130,8 @@ class Level
         player.socket.write(finalPacket);
 
         // first position
-        var positionPacket = packetSerializer.serializePacket(PacketType.PlayerPosition, {
-            playerID: player.playerID,
+        var positionPacket = serializePacket(PacketType.PlayerPosition, {
+            playerID: -1,
             posX: this.spawnX,
             posY: this.spawnY,
             posZ: this.spawnZ,
@@ -140,26 +141,25 @@ class Level
         player.socket.write(positionPacket);
 
         // other players
-        /*
         if (this.players.length > 0)
         {
-            for (var otherPlayer in this.players)
+            for (var otherPlayer of this.players)
             {
-                if (otherPlayer != player)
+                if (otherPlayer != player && otherPlayer.isLoggedIn())
                 {
-                    netStream.newPacket(PacketType.AddPlayer);
-                    netStream.writeByte(otherPlayer.playerID);
-                    netStream.writeString(otherPlayer.username);
-                    netStream.writeUShort(otherPlayer.posX);
-                    netStream.writeUShort(otherPlayer.posY);
-                    netStream.writeUShort(otherPlayer.posZ);
-                    netStream.writeByte(otherPlayer.yaw);
-                    netStream.writeByte(otherPlayer.pitch);
-                    netStream.sendPacket(player.socket);
+                    var playerAdd = serializePacket(PacketType.AddPlayer, {
+                        playerID: otherPlayer.playerID,
+                        playerName: otherPlayer.username,
+                        posX: otherPlayer.posX,
+                        posY: otherPlayer.posY,
+                        posZ: otherPlayer.posZ,
+                        yaw: otherPlayer.yaw,
+                        pitch: otherPlayer.yaw
+                    });
+                    otherPlayer.socket.write(playerAdd);
                 }
             }
         }
-        */
     }
 
     getFlatBlockAtY(y)

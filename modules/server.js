@@ -2,7 +2,7 @@ const net = require('node:net');
 const fs = require('fs');
 const crypto = require('crypto');
 const PacketType = require('./packet.js').PacketType;
-const PacketSerializer = require('./packet.js').PacketSerializer;
+const serializePacket = require('./packet.js').serializePacket;
 const Player = require('./player.js').Player;
 const Level = require('./game/level.js').Level;
 
@@ -20,7 +20,6 @@ class Server
 {
     constructor()
     {
-        this.packetSerializer = new PacketSerializer();
         this.netServer = null;
         
         this.properties = this.loadProperties('properties.json');
@@ -139,7 +138,7 @@ class Server
         for (var player of this.players)
         {
             if (player.isLoggedIn() && !player.isDisconnected())
-                player.socket.write(this.packetSerializer.serializePacket(PacketType.ClientPing, {}));
+                player.socket.write(serializePacket(PacketType.ClientPing, {}));
         }
     }
 
@@ -162,7 +161,7 @@ class Server
 
     sendServerHandshake(player)
     {
-        var handshake = this.packetSerializer.serializePacket(PacketType.Handshake, {
+        var handshake = serializePacket(PacketType.Handshake, {
             protocolVersion: 0x07,
             name: this.properties.serverName,
             extra: this.properties.motd,
@@ -174,7 +173,7 @@ class Server
     sendExtensionInfo(player)
     {
         // info
-        var extensionInfo = this.packetSerializer.serializePacket(PacketType.ExtInfo, {
+        var extensionInfo = serializePacket(PacketType.ExtInfo, {
            software: "classic.js Alpha 0",
            extensionCount: 0 
         });
@@ -217,32 +216,32 @@ class Server
         }
     }
 
-    notifyPlayerAdded(level, player)
+    notifyPlayerAdded(player)
     {
-        var playerAdd = this.packetSerializer.serializePacket(PacketType.AddPlayer, {
+        var playerAdd = serializePacket(PacketType.AddPlayer, {
             playerID: player.playerID,
             playerName: player.username,
-            posX: player.posX,
-            posY: player.posY,
-            posZ: player.posZ,
-            yaw: player.yaw,
-            pitch: player.yaw
+            posX: player.position.posX,
+            posY: player.position.posY,
+            posZ: player.position.posZ,
+            yaw: player.position.yaw,
+            pitch: player.position.pitch
         });
         for (var otherPlayer of this.players)
         {
-            if (otherPlayer !== player && otherPlayer.currentLevel === level)
+            if (otherPlayer !== player && otherPlayer.currentLevel === player.currentLevel)
                 otherPlayer.socket.write(playerAdd);
         }
     }
 
-    notifyPlayerRemoved(level, player)
+    notifyPlayerRemoved(player)
     {
-        var playerRemove = this.packetSerializer.serializePacket(PacketType.RemovePlayer, {
+        var playerRemove = serializePacket(PacketType.RemovePlayer, {
             playerID: player.playerID
         });
         for (var otherPlayer of this.players)
         {
-            if (otherPlayer !== player && otherPlayer.currentLevel === level)
+            if (otherPlayer !== player && otherPlayer.currentLevel === player.currentLevel)
                 otherPlayer.socket.write(playerRemove);
         }
     }
@@ -258,13 +257,62 @@ class Server
         }
     }
 
+    notifyPlayerPosition(player)
+    {
+        // check difference
+        var movedPos = !player.position.positionEquals(player.lastPosition);
+        var movedRot = !player.position.rotationEquals(player.lastPosition);
+        var xDiff = player.position.posXDifference(player.lastPosition);
+        var yDiff = player.position.posYDifference(player.lastPosition);
+        var zDiff = player.position.posZDifference(player.lastPosition);
+        var pitchDiff = player.position.pitchDifference(player.lastPosition);
+        var yawDiff = player.position.yawDifference(player.lastPosition);
+        var movePacket;
+        if (movedPos && movedRot)
+        {
+            movePacket = serializePacket(PacketType.PosRotUpdate, {
+                playerID: player.playerID,
+                deltaX: player.lastPosition.posX - player.position.posX,
+                deltaY: player.lastPosition.posY - player.position.posY,
+                deltaZ: player.lastPosition.posZ - player.position.posZ,
+                deltaYaw: player.lastPosition.yaw - player.position.yaw,
+                deltaPitch: player.lastPosition.pitch - player.position.pitch
+            });
+        }
+        else if (movedPos)
+        {
+            movePacket = serializePacket(PacketType.PosUpdate, {
+                playerID: player.playerID,
+                deltaX: player.lastPosition.posX - player.position.posX,
+                deltaY: player.lastPosition.posY - player.position.posY,
+                deltaZ: player.lastPosition.posZ - player.position.posZ
+            });
+        }
+        else if (movedRot)
+        {
+            movePacket = serializePacket(PacketType.PosRotUpdate, {
+                playerID: player.playerID,
+                deltaYaw: player.lastPosition.yaw - player.position.yaw,
+                deltaPitch: player.lastPosition.pitch - player.position.pitch
+            });
+        }
+        else
+            return; // no schmovement
+
+        for (var otherPlayer of this.players)
+        {
+            if (otherPlayer != player && otherPlayer.currentLevel === player.currentLevel)
+                otherPlayer.socket.write(movePacket);
+        }
+    }
+
     notifyBlockPlaced(player, x, y, z, type)
     {
         for (var otherPlayer of this.players)
         {
             if (otherPlayer.currentLevel === player.currentLevel)
             {
-                var setBlock = this.packetSerializer.serializePacket(PacketType.SetBlockServer, {
+                var setBlock = serializePacket(PacketType.SetBlockServer, {
                     posX: x,
                     posY: y,
                     posZ: z,
@@ -281,7 +329,7 @@ class Server
         {
             if (otherPlayer.currentLevel === player.currentLevel)
             {
-                var setBlock = this.packetSerializer.serializePacket(PacketType.SetBlockServer, {
+                var setBlock = serializePacket(PacketType.SetBlockServer, {
                     posX: x,
                     posY: y,
                     posZ: z,
