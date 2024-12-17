@@ -13,6 +13,7 @@ const DefaultProperties = {
     port: 25565,
     maxPlayers: 20,
 
+    mainLevel: "main",
     disallowVanillaClients: false
 }
 
@@ -65,9 +66,9 @@ class Server
         var levels = {};
         if (dir.length == 0)
         {
-            var main = new Level("main", 256, 64, 256);
+            var main = new Level(this.properties.mainLevel, 256, 64, 256);
             main.fillFlatGrass();
-            levels['main'] = main;
+            levels[this.properties.mainLevel] = main;
             main.saveLevel();
         }
         else
@@ -92,6 +93,7 @@ class Server
     {
         this.netServer = net.createServer(this.onClientConnected);
         this.netServer.on('error', this.onServerError);
+        this.netServer.on('close', this.onServerClosed);
         this.netServer.listen(this.properties.port, this.onServerReady);
         this.heartbeatInterval = setInterval(this.heartbeat.bind(this), 20 * 50);
         this.updateInterval = setInterval(this.update.bind(this), 50);
@@ -103,11 +105,16 @@ class Server
         console.log(`Server "${server.properties.serverName}' ready`);
     }
 
+    onServerClosed()
+    {
+        global.server.shutDownServer();
+    }
+
     onServerError(err)
     {
         var server = global.server;
         console.log(err);
-        server.netServer.close();
+        server.shutDownServer(1);
     }
 
     onClientConnected(socket)
@@ -182,11 +189,25 @@ class Server
 
     sendPlayerToLevel(player, level)
     {
-        if (player.currentLevel === this.levels[level])
-            return false;
+        if (this.levels[level] == undefined)
+            return 1;
+        else if (player.currentLevel === this.levels[level])
+            return 2;
         else
             player.sendToLevel(this.levels[level]);
-        return true;
+        return 0;
+    }
+
+    shutDownServer(exitCode)
+    {
+        var server = global.server;
+        console.log('Server closed');
+        for (var level of Object.values(server.levels))
+            level.saveLevel();
+        for (var player of server.players)
+            player.disconnect('Server shutting down');
+        server.netServer.close();
+        process.exit(exitCode);
     }
 
     getPlayerCount()
@@ -260,6 +281,7 @@ class Server
     notifyPlayerPosition(player)
     {
         // check difference
+        /*
         var movedPos = !player.position.positionEquals(player.lastPosition);
         var movedRot = !player.position.rotationEquals(player.lastPosition);
         var xDiff = player.position.posXDifference(player.lastPosition);
@@ -304,6 +326,7 @@ class Server
             if (otherPlayer != player && otherPlayer.currentLevel === player.currentLevel)
                 otherPlayer.socket.write(movePacket);
         }
+        */
     }
 
     notifyBlockPlaced(player, x, y, z, type)

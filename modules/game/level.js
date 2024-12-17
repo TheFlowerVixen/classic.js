@@ -5,7 +5,7 @@ const serializePacket = require('../packet.js').serializePacket;
 
 class Level
 {
-    constructor(levelName, sizeX = 0, sizeY = 0, sizeZ = 0)
+    constructor(levelName, sizeX = 256, sizeY = 64, sizeZ = 256)
     {    
         this.levelName = levelName;
         this.sizeX = sizeX;
@@ -22,7 +22,7 @@ class Level
 
     flattenCoordinate(x, y, z)
     {
-        return (this.sizeX * this.sizeZ) * y + (this.sizeX) * z + x;
+        return (this.sizeZ * this.sizeX) * y + this.sizeX * z + x;
     }
 
     setBlock(x, y, z, type)
@@ -58,18 +58,21 @@ class Level
             this.sizeX = levelBuffer.readUInt16BE(0);
             this.sizeY = levelBuffer.readUInt16BE(2);
             this.sizeZ = levelBuffer.readUInt16BE(4);
-            this.decompressBlockData(levelBuffer.subarray(6));
+            this.blocks = new Array(this.sizeX * this.sizeY * this.sizeZ);
+            for (var i = 0; i < this.blocks.length; i++)
+                this.blocks[i] = levelBuffer.readUInt8(6 + i);
         }
     }
 
     saveLevel()
     {
-        var dataBuffer = Buffer.alloc(6);
+        var dataBuffer = Buffer.alloc(6 + this.blocks.length);
         dataBuffer.writeUInt16BE(this.sizeX, 0);
         dataBuffer.writeUInt16BE(this.sizeY, 2);
         dataBuffer.writeUInt16BE(this.sizeZ, 4);
-        var finalData = Buffer.concat([dataBuffer, this.compressBlockData()]);
-        fs.writeFileSync(`levels/${this.levelName}.lvl`, finalData);
+        for (var i = 0; i < this.blocks.length; i++)
+            dataBuffer.writeUInt8(this.blocks[i], 6 + i);
+        fs.writeFileSync(`levels/${this.levelName}.lvl`, dataBuffer);
     }
 
     compressBlockData()
@@ -77,7 +80,7 @@ class Level
         var sizeBuffer = Buffer.alloc(4);
         sizeBuffer.writeUInt32BE(this.blocks.length);
         var blockBuffer = Buffer.from(this.blocks);
-        var compressedBlocks = zlib.gzipSync(Buffer.concat([sizeBuffer, blockBuffer]), {level: -1});
+        var compressedBlocks = zlib.gzipSync(Buffer.concat([sizeBuffer, blockBuffer]), {level: 1});
         return compressedBlocks;
     }
 
@@ -92,31 +95,32 @@ class Level
 
     sendLevelData(player)
     {
+        var levelPackets = [];
+
         // level init
-        player.socket.write(serializePacket(PacketType.LevelInit, {}));
+        levelPackets.push(serializePacket(PacketType.LevelInit, {}));
 
         // compress block data
         var compressedBlocks = this.compressBlockData();
         
         // level chunks
-        var chunkBuffer = Buffer.alloc(1024, 0x00);
         var position = 0;
         var remainingBlocks = compressedBlocks.length;
 
         var chunkSize = 0;
         while (remainingBlocks > 0)
         {
+            var chunkBuffer = Buffer.alloc(1024, 0x00);
             chunkSize = Math.min(remainingBlocks, chunkBuffer.length);
-            compressedBlocks.copy(chunkBuffer, 0, position, chunkSize);
+            compressedBlocks.copy(chunkBuffer, 0, position, position + chunkSize);
             
             var chunkPacket = serializePacket(PacketType.LevelChunk, {
                 chunkLength: chunkSize,
                 chunkData: chunkBuffer,
                 percentComplete: (position + chunkSize) * 100 / compressedBlocks.length
-            })
-            player.socket.write(chunkPacket);
+            });
+            levelPackets.push(chunkPacket);
 
-            chunkBuffer.fill(0x00);
             remainingBlocks -= chunkSize;
             position += chunkSize;
         }
@@ -127,7 +131,9 @@ class Level
             sizeY: this.sizeY,
             sizeZ: this.sizeZ
         });
-        player.socket.write(finalPacket);
+        levelPackets.push(finalPacket);
+
+        player.socket.write(Buffer.concat(levelPackets));
 
         // first position
         var positionPacket = serializePacket(PacketType.PlayerPosition, {

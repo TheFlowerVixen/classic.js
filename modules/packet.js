@@ -193,7 +193,7 @@ class NetStream
 		var fixed = (dec << 5) & 0xFFE0 || Math.floor(0x1F * frac) & 0x1F;
 
 		var buffer = Buffer.alloc(2);
-		buffer.writeInt16BE(fixed);
+		buffer.writeUInt16BE(fixed);
 		this.chunks.push(buffer);
 	}
 
@@ -248,11 +248,7 @@ class NetStream
 
 	writeByteArray(array)
 	{
-		var buffer = Buffer.alloc(1024, 0x00);
-		var offs = 0;
-		for (var i = 0; i < Math.min(array.length, buffer.length); i++)
-			offs = buffer.writeUInt8(array[i], offs);
-		this.chunks.push(buffer);
+		this.chunks.push(array);
 	}
 
 	readByteArray()

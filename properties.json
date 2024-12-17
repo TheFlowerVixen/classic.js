@@ -4,5 +4,6 @@
     "password": "",
     "port": 25565,
     "maxPlayers": 20,
+    "mainLevel": "main",
     "disallowVanillaClients": false
 }

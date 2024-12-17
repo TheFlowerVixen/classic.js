@@ -326,7 +326,10 @@ class Player
         switch (args[0])
         {
             case '/level':
-                if (!global.server.sendPlayerToLevel(this, args[1]))
+                var code = global.server.sendPlayerToLevel(this, args[1]);
+                if (code == 1)
+                    this.sendMessage('&cThat level does not exist!');
+                if (code == 2)
                     this.sendMessage('&cYou are already in this level!');
                 break;
             
@@ -363,6 +366,10 @@ class Player
                     pitch: 0
                 });
                 this.socket.write(tpPacket);
+                break;
+            
+            case '/stop':
+                global.server.shutDownServer(1);
                 break;
         }
     }
