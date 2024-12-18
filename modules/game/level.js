@@ -13,7 +13,7 @@ class Level
         this.sizeZ = sizeZ;
 
         this.spawnX = this.sizeX / 2;
-        this.spawnY = 64;
+        this.spawnY = this.sizeY / 2;
         this.spawnZ = this.sizeZ / 2;
 
         this.players = [];
@@ -136,36 +136,7 @@ class Level
         player.socket.write(Buffer.concat(levelPackets));
 
         // first position
-        var positionPacket = serializePacket(PacketType.PlayerPosition, {
-            playerID: -1,
-            posX: this.spawnX,
-            posY: this.spawnY,
-            posZ: this.spawnZ,
-            yaw: 0,
-            pitch: 0
-        });
-        player.socket.write(positionPacket);
-
-        // other players
-        if (this.players.length > 0)
-        {
-            for (var otherPlayer of this.players)
-            {
-                if (otherPlayer != player && otherPlayer.isLoggedIn())
-                {
-                    var playerAdd = serializePacket(PacketType.AddPlayer, {
-                        playerID: otherPlayer.playerID,
-                        playerName: otherPlayer.username,
-                        posX: otherPlayer.posX,
-                        posY: otherPlayer.posY,
-                        posZ: otherPlayer.posZ,
-                        yaw: otherPlayer.yaw,
-                        pitch: otherPlayer.yaw
-                    });
-                    otherPlayer.socket.write(playerAdd);
-                }
-            }
-        }
+        player.teleportCentered(this.spawnX, this.spawnY, this.spawnZ);
     }
 
     getFlatBlockAtY(y)

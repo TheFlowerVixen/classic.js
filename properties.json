@@ -1,9 +1,0 @@
-{
-    "serverName": "Awesome Epic Server",
-    "motd": "A Nice Server",
-    "password": "",
-    "port": 25565,
-    "maxPlayers": 20,
-    "mainLevel": "main",
-    "disallowVanillaClients": false
-}

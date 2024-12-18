@@ -9,11 +9,13 @@ const DataType = {
 	String: 5,
 	ByteArray: 6
 }
+const DataTypeCount = 7;
 
 const PacketError = {
 	InvalidID: 0,
 	EndOfStream: 1
 }
+const PacketErrorCount = 2;
 
 const PacketType = {
 	Handshake: 0x00,
@@ -36,6 +38,7 @@ const PacketType = {
 	ExtInfo: 0x10,
 	ExtEntry: 0x11
 }
+const PacketTypeCount = 0x12;
 
 const PacketData = [
 	// Handshake:
@@ -74,7 +77,7 @@ const PacketData = [
 		posX: DataType.UShort,
 		posY: DataType.UShort,
 		posZ: DataType.UShort,
-		blockType: DataType.UShort
+		blockType: DataType.UByte
 	},
 	// AddPlayer:
 	{
@@ -188,21 +191,14 @@ class NetStream
 
 	writeFixed(f)
 	{
-		var dec = Math.floor(f);
-		var frac = f - dec;
-		var fixed = (dec << 5) & 0xFFE0 || Math.floor(0x1F * frac) & 0x1F;
-
 		var buffer = Buffer.alloc(2);
-		buffer.writeUInt16BE(fixed);
+		buffer.writeInt16BE((f * 32) & 0xFFFF);
 		this.chunks.push(buffer);
 	}
 
 	readFixed()
 	{
-		var fixed = this.buf.readInt16BE(this.increasePosition(2));
-		var dec = (fixed >> 5) & 0x7FF;
-		var frac = (fixed & 0x1F) / 31.0;
-		return dec + frac;
+		return this.buf.readInt16BE(this.increasePosition(2)) / 32;
 	}
 
 	writeUShort(s)
@@ -359,6 +355,10 @@ function serializePacket(packetID, data)
 	netStream.writeUByte(packetID);
 	for (const [key, value] of Object.entries(packetType))
 	{
+		if (data[key] == undefined)
+			console.error(`Missing ${key} from packet data!`);
+		if (value == undefined || value < 0 || value > DataTypeCount)
+			console.error(`Invalid data type ${value}!`)
 		switch (value)
 		{
 			case DataType.Byte:
@@ -378,7 +378,7 @@ function serializePacket(packetID, data)
 				break;
 			
 			case DataType.Fixed:
-				netStream.writeFixed(data[key]); // TODO: replace with fixed-point conversion
+				netStream.writeFixed(data[key]);
 				break;
 			
 			case DataType.String:

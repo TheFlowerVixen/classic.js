@@ -14,6 +14,7 @@ const DefaultProperties = {
     maxPlayers: 20,
 
     mainLevel: "main",
+    autosaveInterval: 10,
     disallowVanillaClients: false
 }
 
@@ -30,6 +31,8 @@ class Server
 
         this.heartbeatInterval = null;
         this.updateInterval = null;
+        this.autosaveInterval = null;
+        this.ticksRan = 0;
     }
 
     loadProperties(filePath)
@@ -97,12 +100,13 @@ class Server
         this.netServer.listen(this.properties.port, this.onServerReady);
         this.heartbeatInterval = setInterval(this.heartbeat.bind(this), 20 * 50);
         this.updateInterval = setInterval(this.update.bind(this), 50);
+        this.autosaveInterval = setInterval(this.autosave.bind(this), this.properties.autosaveInterval * 20 * 50);
     }
 
     onServerReady()
     {
         var server = global.server;
-        console.log(`Server "${server.properties.serverName}' ready`);
+        console.log(`Server "${server.properties.serverName}" ready`);
     }
 
     onServerClosed()
@@ -151,6 +155,7 @@ class Server
 
     update()
     {
+        this.ticksRan++;
         for (var player of this.players)
         {
             if (player.isDisconnected())
@@ -159,11 +164,24 @@ class Server
                 player.socket.end();
                 this.players.splice(this.players.indexOf(player));
             }
-            if (!player.tickResponse())
+            else if (!player.tickResponse())
             {
                 player.disconnect('Timed out');
             }
+            else
+            {
+                if (this.ticksRan % 2 == 0)
+                {
+                    this.notifyPlayerPosition(player);
+                }
+            }
         }
+    }
+
+    autosave()
+    {
+        for (var level of Object.values(this.levels))
+            level.saveLevel();
     }
 
     sendServerHandshake(player)
@@ -250,7 +268,7 @@ class Server
         });
         for (var otherPlayer of this.players)
         {
-            if (otherPlayer !== player && otherPlayer.currentLevel === player.currentLevel)
+            if (otherPlayer.playerID != player.playerID && otherPlayer.currentLevel.levelName == player.currentLevel.levelName)
                 otherPlayer.socket.write(playerAdd);
         }
     }
@@ -262,7 +280,7 @@ class Server
         });
         for (var otherPlayer of this.players)
         {
-            if (otherPlayer !== player && otherPlayer.currentLevel === player.currentLevel)
+            if (otherPlayer.playerID != player.playerID && otherPlayer.currentLevel.levelName == player.currentLevel.levelName)
                 otherPlayer.socket.write(playerRemove);
         }
     }
@@ -271,7 +289,7 @@ class Server
     {
         for (var otherPlayer of this.players)
         {
-            if (player.localChat && otherPlayer.currentLevel === player.currentLevel)
+            if (player.localChat && otherPlayer.currentLevel.levelName == player.currentLevel.levelName)
                 otherPlayer.sendMessage(`(LOCAL) <${player.username}> ${message}`);
             else
                 otherPlayer.sendMessage(`<${player.username}> ${message}`);
@@ -320,20 +338,53 @@ class Server
         }
         else
             return; // no schmovement
+        */
+        if (player.position.posRotEquals(player.lastPosition))
+            return;
+
+        var movePacket = serializePacket(PacketType.PlayerPosition, {
+            playerID: player.playerID,
+            posX: player.position.posX,
+            posY: player.position.posY,
+            posZ: player.position.posZ,
+            yaw: player.position.yaw,
+            pitch: player.position.pitch
+        });
 
         for (var otherPlayer of this.players)
         {
-            if (otherPlayer != player && otherPlayer.currentLevel === player.currentLevel)
+            if (otherPlayer.playerID != player.playerID && otherPlayer.currentLevel.levelName == player.currentLevel.levelName)
                 otherPlayer.socket.write(movePacket);
         }
-        */
+    }
+
+    notifyPlayerTeleport(player, position)
+    {
+        for (var otherPlayer of this.players)
+        {
+            if (otherPlayer.currentLevel.levelName == player.currentLevel.levelName)
+            {
+                var id = player.playerID;
+                if (player === otherPlayer)
+                    id = -1;
+                var tpPacket = serializePacket(PacketType.PlayerPosition, {
+                    playerID: id,
+                    posX: position.posX,
+                    posY: position.posY,
+                    posZ: position.posZ,
+                    yaw: position.yaw,
+                    pitch: position.pitch
+                });
+                otherPlayer.socket.write(tpPacket);
+            }
+        }
     }
 
     notifyBlockPlaced(player, x, y, z, type)
     {
         for (var otherPlayer of this.players)
         {
-            if (otherPlayer.currentLevel === player.currentLevel)
+            if (otherPlayer.currentLevel.levelName == player.currentLevel.levelName)
             {
                 var setBlock = serializePacket(PacketType.SetBlockServer, {
                     posX: x,
@@ -350,7 +401,7 @@ class Server
     {
         for (var otherPlayer of this.players)
         {
-            if (otherPlayer.currentLevel === player.currentLevel)
+            if (otherPlayer.currentLevel.levelName == player.currentLevel.levelName)
             {
                 var setBlock = serializePacket(PacketType.SetBlockServer, {
                     posX: x,

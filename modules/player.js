@@ -47,6 +47,11 @@ class PlayerPosition
         return this.pitch == otherPos.pitch && this.yaw == otherPos.yaw;
     }
 
+    posRotEquals(otherPos)
+    {
+        return this.positionEquals(otherPos) && this.rotationEquals(otherPos);
+    }
+
     posXDifference(otherPos)
     {
         return otherPos.posX - this.posX;
@@ -160,7 +165,23 @@ class Player
         );
         global.server.notifyPlayerConnected(this);
         global.server.sendServerHandshake(this);
-        global.server.sendPlayerToLevel(this, "main");
+        global.server.sendPlayerToLevel(this, global.server.properties.mainLevel);
+        for (var otherPlayer of global.server.players)
+        {
+            if (otherPlayer.playerID != this.playerID && otherPlayer.isLoggedIn())
+            {
+                var playerAdd = serializePacket(PacketType.AddPlayer, {
+                    playerID: otherPlayer.playerID,
+                    playerName: otherPlayer.username,
+                    posX: otherPlayer.position.posX,
+                    posY: otherPlayer.position.posY,
+                    posZ: otherPlayer.position.posZ,
+                    yaw: otherPlayer.position.yaw,
+                    pitch: otherPlayer.position.pitch
+                });
+                otherPlayer.socket.write(playerAdd);
+            }
+        }
     }
 
     onDisconnect()
@@ -308,7 +329,7 @@ class Player
         if (data.playerID == 0xFF)
         {
             this.updatePositionAndRotation(data.posX, data.posY, data.posZ, data.pitch, data.yaw);
-            global.server.notifyPlayerPosition(this);
+            //global.server.notifyPlayerPosition(this);
         }
     }
 
@@ -357,15 +378,7 @@ class Player
                 var x = parseInt(args[1]);
                 var y = parseInt(args[2]);
                 var z = parseInt(args[3]);
-                var tpPacket = serializePacket(PacketType.PlayerPosition, {
-                    playerID: -1,
-                    posX: x,
-                    posY: y,
-                    posZ: z,
-                    yaw: 0,
-                    pitch: 0
-                });
-                this.socket.write(tpPacket);
+                this.teleportCentered(x, y, z);
                 break;
             
             case '/stop':
@@ -436,6 +449,7 @@ class Player
 
     disconnect(reason)
     {
+        console.log(`Disconnecting ${this.username} with reason "${reason}"`)
         var disconnectPacket = serializePacket(PacketType.DisconnectPlayer, {
             reason: reason
         });
@@ -471,6 +485,17 @@ class Player
             message: message
         });
         this.socket.write(messagePacket);
+    }
+
+    teleport(x, y, z)
+    {
+        this.updatePositionAndRotation(x, y, z, 0, 0);
+        global.server.notifyPlayerTeleport(this, this.position);
+    }
+
+    teleportCentered(x, y, z)
+    {
+        this.teleport(x + 0.5, y + 1.59375, z + 0.5);
     }
 }
 
