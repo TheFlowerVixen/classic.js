@@ -6,7 +6,7 @@
         {
             "label": "Run Server",
             "type": "shell",
-            "command": "node classic.js"
+            "command": "node index.js"
         }
     ]
 }

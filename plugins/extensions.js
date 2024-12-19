@@ -10,21 +10,6 @@ const ExtendedPacketType = {
     HoldThis: 0x14
 }
 
-function splitStringIntoParts(message, messageType)
-{
-    var messageParts = [];
-    var remainingLength = message.length;
-    var currentPos = 0;
-    while (remainingLength > 0)
-    {
-        var messagePart = message.substring(currentPos, currentPos + 64);
-        messageParts.push(messagePart);
-        currentPos += messagePart.length;
-        remainingLength -= messagePart.length;
-    }
-    return messageParts;
-}
-
 class ExtensionsPlugin extends Plugin
 {
     constructor()
@@ -34,6 +19,7 @@ class ExtensionsPlugin extends Plugin
 
     onInit(server)
     {
+        /*
         // Click Distance
         server.addSupportedExtension("ClickDistance", 1);
         definePacketType(ExtendedPacketType.ClickDistance, {
@@ -80,30 +66,7 @@ class ExtensionsPlugin extends Plugin
 
             return false;
         });
-        this.registerEventHandler(EventType.PlayerMessage, function(args) {
-            if (args.message.length > 64)
-            {
-                for (var otherPlayer of server.players)
-                {
-                    var msgStart = "";
-                    if (args.player.localChat)
-                    {
-                        if (otherPlayer.currentLevel.levelName == args.player.currentLevel.levelName)
-                            msgStart = `(LOCAL) <${args.player.username}> `;
-                        else
-                            return;
-                    }
-                    else
-                        msgStart = `<${args.player.username}> `;
-
-                    for (var messagePart of splitStringIntoParts(msgStart + args.message, args.messageType))
-                        otherPlayer.sendMessage(messagePart);
-                }
-                return false;
-            }
-
-            return true;
-        });
+        */
 
         // Commands
         this.registerEventHandler(EventType.PlayerCommand, function(args) {

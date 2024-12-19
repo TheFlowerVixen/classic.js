@@ -8,7 +8,7 @@ const Level = require('./game/level.js').Level;
 const EventType = require('./event.js').EventType;
 
 // temp
-//const ExtensionsPlugin = require('../plugins/extensions.js').ExtensionsPlugin;
+const ExtensionsPlugin = require('../plugins/extensions.js').ExtensionsPlugin;
 
 const DefaultProperties = {
     serverName: "classic.js Server",
@@ -212,6 +212,11 @@ class Server
         player.socket.write(extensionInfo);
         for (var extension of this.supportedExtensions)
             player.socket.write(serializePacket(PacketType.ExtEntry, extension));
+
+        var blockSupportPacket = serializePacket(PacketType.CustomBlockSupportLevel, {
+            supportLevel: 1
+        });
+        player.socket.write(blockSupportPacket);
     }
 
     sendPlayerToLevel(player, level)
@@ -463,7 +468,7 @@ class Server
                     posX: x,
                     posY: y,
                     posZ: z,
-                    blockType: type
+                    blockType: otherPlayer.getPlayerSpecificBlock(type)
                 });
                 otherPlayer.socket.write(setBlock);
             }

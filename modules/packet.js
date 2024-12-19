@@ -36,8 +36,12 @@ const PacketType = {
 	DisconnectPlayer: 0x0E,
 	OpUser: 0x0F,
 
+	// extended protocol
 	ExtInfo: 0x10,
-	ExtEntry: 0x11
+	ExtEntry: 0x11,
+	ClickDistance: 0x12,
+	CustomBlockSupportLevel: 0x13,
+    HoldThis: 0x14,
 }
 const PacketTypeCount = 0x12;
 
@@ -128,7 +132,7 @@ const PacketData = [
 	// Message:
 	{
 		messageType: DataType.Byte,
-		message: DataType.String
+		message: DataType.UntrimmedString
 	},
 	// DisconnectPlayer:
 	{
@@ -147,6 +151,49 @@ const PacketData = [
 	{
 		extName: DataType.String,
 		version: DataType.UInt
+	},
+	// ClickDistance:
+	{
+		distance: DataType.Fixed
+	},
+	// CustomBlockSupportLevel:
+	{
+		supportLevel: DataType.UByte
+	},
+	// HoldThis:
+	{
+		blockToHold: DataType.UByte,
+		preventChange: DataType.UByte
+	},
+	// SetTextHotKey:
+	{
+		label: DataType.String,
+		action: DataType.String,
+		keyCode: DataType.UInt,
+		keyMods: DataType.UByte
+	},
+	// ExtAddPlayerName:
+	{
+		nameID: DataType.UShort,
+		playerName: DataType.String,
+		listName: DataType.String,
+		groupName: DataType.String,
+		groupRank: DataType.UByte
+	},
+	// ExtAddEntity2:
+	{
+		entityID: DataType.Byte,
+		inGameName: DataType.String,
+		skinName: DataType.String,
+		spawnX: DataType.Fixed,
+		spawnY: DataType.Fixed,
+		spawnZ: DataType.Fixed,
+		spawnYaw: DataType.UByte,
+		spawnPitch: DataType.UByte
+	},
+	// ExtRemovePlayerName:
+	{
+		nameID: DataType.UShort
 	}
 ]
 

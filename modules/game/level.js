@@ -75,11 +75,11 @@ class Level
         fs.writeFileSync(`levels/${this.levelName}.lvl`, dataBuffer);
     }
 
-    compressBlockData()
+    compressBlockData(blockData)
     {
         var sizeBuffer = Buffer.alloc(4);
-        sizeBuffer.writeUInt32BE(this.blocks.length);
-        var blockBuffer = Buffer.from(this.blocks);
+        sizeBuffer.writeUInt32BE(blockData.length);
+        var blockBuffer = Buffer.from(blockData);
         var compressedBlocks = zlib.gzipSync(Buffer.concat([sizeBuffer, blockBuffer]), {level: 1});
         return compressedBlocks;
     }
@@ -101,7 +101,10 @@ class Level
         levelPackets.push(serializePacket(PacketType.LevelInit, {}));
 
         // compress block data
-        var compressedBlocks = this.compressBlockData();
+        var blocksCopy = [];
+        for (var i = 0; i < this.blocks.length; i++)
+            blocksCopy[i] = player.getPlayerSpecificBlock(this.blocks[i]);
+        var compressedBlocks = this.compressBlockData(blocksCopy);
         
         // level chunks
         var position = 0;

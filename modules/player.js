@@ -19,6 +19,28 @@ const DefaultUserData = {
     password: ""
 }
 
+// Source: https://www.30secondsofcode.org/js/s/word-wrap/
+const wordWrap = /(?![^\n]{1,64}$)([^\n]{1,64})\s/g;
+
+const FallbackBlocksLevel1 = [
+    0x2C,
+    0x27,
+    0x0C,
+    0x00,
+    0x0A,
+    0x21,
+    0x19,
+    0x03,
+    0x1d,
+    0x1c,
+    0x14,
+    0x2a,
+    0x31,
+    0x24,
+    0x05,
+    0x01
+]
+
 class PlayerPosition
 {
     constructor(posX, posY, posZ, pitch, yaw)
@@ -97,6 +119,10 @@ class Player
         this.supportsCPE = false;
         this.supportedExtensions = [];
         this.extensionCount = -1;
+        this.packetWaitingFor = -1;
+        this.clickDistance = 3.75;
+        this.storedMessage = "";
+        this.blockSupportLevel = 0;
     }
     
     loadUserData(filePath)
@@ -145,6 +171,7 @@ class Player
 
     onLogin()
     {
+        this.packetWaitingFor = -1;
         console.log(`Player id ${this.playerID} logged in as ${this.username} (auth key ${this.authKey}, supports CPE: ${this.supportsCPE})`);
         this.userData = this.loadUserData(`users/${this.username}.json`);
         this.playerState = PlayerState.LoggedIn;
@@ -219,6 +246,10 @@ class Player
                 
                 case PacketType.ExtEntry:
                     this.handleExtEntry(packet.data);
+                    break;
+                
+                case PacketType.CustomBlockSupportLevel:
+                    this.handleCustomBlockSupportLevel(packet.data);
                     break;
             }
         }
@@ -315,11 +346,24 @@ class Player
 
     handleMessage(data)
     {
-        console.log(`${this.username}: ${data.message}`);
-        if (data.message.startsWith('/'))
-            this.handleCommand(data.message.split(' '));
+        var message = data.message.trimEnd();
+        if (this.supportsExtension("LongerMessages", 1))
+        {
+            this.storedMessage += data.message;
+            if (data.messageType != 0x0)
+                return false;
+            else
+            {
+                message = this.storedMessage.trimEnd();
+                this.storedMessage = "";
+            }
+        }
+
+        console.log(`${this.username}: ${message}`);
+        if (message.startsWith('/'))
+            this.handleCommand(message.split(' '));
         else
-            global.server.notifyPlayerMessage(this, data.message, data.messageType);
+            global.server.notifyPlayerMessage(this, message, data.messageType);
     }
 
     handleCommand(args)
@@ -400,25 +444,23 @@ class Player
         this.extensionCount = data.extensionCount;
         console.log(`Client software: ${this.clientSoftware}`);
         console.log(`Number of extensions: ${this.extensionCount}`);
-        // no extensions supported...?
         if (this.extensionCount == 0)
-        {
-            //console.log('No supported extensions, send handshake');
-            this.onLogin();
-        }
+            this.packetWaitingFor = PacketType.CustomBlockSupportLevel;
     }
 
     handleExtEntry(data)
     {
         this.supportedExtensions.push(data);
-        //console.log('Extension: ' + extensionName + ' (v' + extensionVersion + ')');
         this.extensionCount--;
         if (this.extensionCount == 0)
-        {
-            console.log(this.supportedExtensions);
-            //console.log('Done, send handshake');
+            this.packetWaitingFor = PacketType.CustomBlockSupportLevel;
+    }
+
+    handleCustomBlockSupportLevel(data)
+    {
+        this.blockSupportLevel = data.supportLevel;
+        if (this.packetWaitingFor == PacketType.CustomBlockSupportLevel)
             this.onLogin();
-        }
     }
 
     handleError(err)
@@ -471,11 +513,25 @@ class Player
 
     sendMessage(message, type = 0)
     {
-        var messagePacket = serializePacket(PacketType.Message, {
-            messageType: type,
-            message: message
-        });
-        this.socket.write(messagePacket);
+        if (this.supportsExtension("MessageTypes", 1) && type != 0)
+        {
+            var messagePacket = serializePacket(PacketType.Message, {
+                messageType: type,
+                message: message
+            });
+            this.socket.write(messagePacket);
+        }
+        else
+        {
+            for (var messagePart of message.replace(wordWrap, '$1\n').split('\n'))
+            {
+                var messagePacket = serializePacket(PacketType.Message, {
+                    messageType: type,
+                    message: messagePart
+                });
+                this.socket.write(messagePacket);
+            }
+        }
     }
 
     teleport(x, y, z)
@@ -499,6 +555,42 @@ class Player
                 return true;
         }
         return false;
+    }
+
+    changeClickDistance(clickDistance)
+    {
+        if (this.supportsExtension("ClickDistance", 1))
+        {
+            this.clickDistance = clickDistance;
+            var clickPacket = serializePacket(PacketType.ClickDistance, {
+                distance: clickDistance
+            });
+            this.socket.write(clickPacket);
+            return true;
+        }
+        return false;
+    }
+
+    changeHeldBlock(block, preventChange = false)
+    {
+        if (this.supportsExtension("HeldBlock", 1))
+        {
+            var holdPacket = serializePacket(PacketType.HoldThis, {
+                blockToHold: block,
+                preventChange: preventChange ? 1 : 0
+            });
+            this.socket.write(holdPacket);
+            return true;
+        }
+        return false;
+    }
+
+    getPlayerSpecificBlock(blockType)
+    {
+        if (blockType > 0x31 && this.blockSupportLevel < 1)
+            return FallbackBlocksLevel1[blockType - 0x32];
+        else
+            return blockType;
     }
 }
 
