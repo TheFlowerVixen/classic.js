@@ -54,7 +54,7 @@ class Level
         var path = `levels/${this.levelName}.lvl`;
         if (fs.existsSync(path))
         {
-            var levelBuffer = fs.readFileSync(path);
+            var levelBuffer = zlib.gunzipSync(fs.readFileSync(path));
             this.sizeX = levelBuffer.readUInt16BE(0);
             this.sizeY = levelBuffer.readUInt16BE(2);
             this.sizeZ = levelBuffer.readUInt16BE(4);
@@ -72,7 +72,7 @@ class Level
         dataBuffer.writeUInt16BE(this.sizeZ, 4);
         for (var i = 0; i < this.blocks.length; i++)
             dataBuffer.writeUInt8(this.blocks[i], 6 + i);
-        fs.writeFileSync(`levels/${this.levelName}.lvl`, dataBuffer);
+        fs.writeFileSync(`levels/${this.levelName}.lvl`, zlib.gzipSync(dataBuffer));
     }
 
     compressBlockData(blockData)
