@@ -7,7 +7,8 @@ const DataType = {
 	UInt: 3,
 	Fixed: 4,
 	String: 5,
-	ByteArray: 6
+	UntrimmedString: 6,
+	ByteArray: 7
 }
 const DataTypeCount = 7;
 
@@ -126,7 +127,7 @@ const PacketData = [
 	},
 	// Message:
 	{
-		playerID: DataType.Byte,
+		messageType: DataType.Byte,
 		message: DataType.String
 	},
 	// DisconnectPlayer:
@@ -148,6 +149,11 @@ const PacketData = [
 		version: DataType.UInt
 	}
 ]
+
+function definePacketType(id, data)
+{
+	PacketData[id] = data;
+}
 
 class NetStream
 {
@@ -192,7 +198,7 @@ class NetStream
 	writeFixed(f)
 	{
 		var buffer = Buffer.alloc(2);
-		buffer.writeInt16BE((f * 32) & 0xFFFF);
+		buffer.writeInt16BE(f * 32);
 		this.chunks.push(buffer);
 	}
 
@@ -234,12 +240,12 @@ class NetStream
 		this.chunks.push(buffer);
 	}
 
-	readString()
+	readString(trim)
 	{
 		var finalString = "";
 		for (var i = 0; i < 64; i++)
 			finalString += String.fromCharCode(this.buf.readInt8(this.increasePosition(1)));
-		return finalString.trimEnd();
+		return trim ? finalString.trimEnd() : finalString;
 	}
 
 	writeByteArray(array)
@@ -328,9 +334,10 @@ function deserializePacket(data, offset)
 				break;
 			
 			case DataType.String:
+			case DataType.UntrimmedString:
 				if (netStream.checkEndOfStream(64))
 					return [PacketError.EndOfStream, packetID];
-				packet.data[key] = netStream.readString();
+				packet.data[key] = netStream.readString(value == DataType.String);
 				break;
 			
 			case DataType.ByteArray:
@@ -382,6 +389,7 @@ function serializePacket(packetID, data)
 				break;
 			
 			case DataType.String:
+			case DataType.UntrimmedString:
 				netStream.writeString(data[key]);
 				break;
 			
@@ -394,5 +402,5 @@ function serializePacket(packetID, data)
 	return netStream.getData();
 }
 
-module.exports = { PacketType, PacketError, serializePacket, deserializePacket };
+module.exports = { DataType, PacketType, PacketError, definePacketType, serializePacket, deserializePacket };
 

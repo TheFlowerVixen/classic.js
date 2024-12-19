@@ -4,6 +4,7 @@ const PacketType = require('./packet.js').PacketType;
 const PacketError = require('./packet.js').PacketError;
 const serializePacket = require('./packet.js').serializePacket;
 const deserializePacket = require('./packet.js').deserializePacket;
+const EventType = require('./event.js').EventType;
 
 const PlayerState = {
     Connected: 0,
@@ -16,14 +17,7 @@ const PlayerState = {
 const DefaultUserData = {
     rank: 0,
     password: "",
-    lastLevel: 0,
-    lastPosition: {
-        x: 0,
-        y: 0,
-        z: 0,
-        pitch: 0,
-        yaw: 0
-    }
+    lastLevel: 0
 }
 
 class PlayerPosition
@@ -103,7 +97,6 @@ class Player
 
         this.supportsCPE = false;
         this.supportedExtensions = [];
-        this.supportedExtensionVersions = [];
         this.extensionCount = -1;
     }
     
@@ -156,45 +149,27 @@ class Player
         console.log(`Player id ${this.playerID} logged in as ${this.username} (auth key ${this.authKey}, supports CPE: ${this.supportsCPE})`);
         this.userData = this.loadUserData(`users/${this.username}.json`);
         this.playerState = PlayerState.LoggedIn;
-        this.updatePositionAndRotation(
-            this.userData.lastPosition.posX,
-            this.userData.lastPosition.posY,
-            this.userData.lastPosition.posZ,
-            this.userData.lastPosition.pitch,
-            this.userData.lastPosition.yaw
-        );
-        global.server.notifyPlayerConnected(this);
+        if (!global.server.notifyPlayerConnected(this))
+        {
+            // limbo (event is expected to disconnect player)
+            return;
+        }
+
         global.server.sendServerHandshake(this);
         global.server.sendPlayerToLevel(this, global.server.properties.mainLevel);
-        for (var otherPlayer of global.server.players)
-        {
-            if (otherPlayer.playerID != this.playerID && otherPlayer.isLoggedIn())
-            {
-                var playerAdd = serializePacket(PacketType.AddPlayer, {
-                    playerID: otherPlayer.playerID,
-                    playerName: otherPlayer.username,
-                    posX: otherPlayer.position.posX,
-                    posY: otherPlayer.position.posY,
-                    posZ: otherPlayer.position.posZ,
-                    yaw: otherPlayer.position.yaw,
-                    pitch: otherPlayer.position.pitch
-                });
-                otherPlayer.socket.write(playerAdd);
-            }
-        }
     }
 
     onDisconnect()
     {
         console.log(`Player id ${this.playerID} disconnected`);
         this.playerState == PlayerState.Disconnected;
-        if (this.userData != null)
+        if (this.isLoggedIn())
         {
             this.userData.lastPosition = this.position;
             this.saveUserData(`users/${this.username}.json`, this.userData);
+            global.server.notifyPlayerDisconnected(this);
+            this.currentLevel.removePlayer(this);
         }
-        global.server.notifyPlayerDisconnected(this);
-        this.currentLevel.removePlayer(this);
     }
 
     updatePositionAndRotation(x, y, z, pitch, yaw)
@@ -226,6 +201,9 @@ class Player
                 return;
             }
 
+            if (!this.handlePacketViaPlugin(packet))
+                continue;
+
             switch (packet.id)
             {
                 case PacketType.Handshake:
@@ -256,6 +234,21 @@ class Player
         this.resetResponse();
     }
 
+    handlePacketViaPlugin(packet)
+    {
+        var result = true;
+        for (var plugin of global.server.plugins)
+        {
+            if (plugin.hasPacketHandler(packet.id))
+            {
+                var pluginResult = plugin.getPacketHandler(packet.id)(this, packet.data);
+                if (!pluginResult)
+                    result = false;
+            }
+        }
+        return result;
+    }
+
     handlePacketError(error)
     {
         switch (error[0])
@@ -284,13 +277,13 @@ class Player
 
         if (global.server.getPlayerCount() > global.server.properties.maxPlayers)
         {
-            this.disconnect("Server is full!");
+            this.disconnect(`Server is full! (max ${global.server.properties.maxPlayers})`);
             return;
         }
 
         if (data.protocolVersion != 0x07)
         {
-            this.disconnect("Unknown protocol version!");
+            this.disconnect(`Unknown protocol version! (${data.protocolVersion})`);
             return;
         }
 
@@ -326,11 +319,8 @@ class Player
 
     handlePosition(data)
     {
-        if (data.playerID == 0xFF)
-        {
-            this.updatePositionAndRotation(data.posX, data.posY, data.posZ, data.pitch, data.yaw);
-            //global.server.notifyPlayerPosition(this);
-        }
+        this.updatePositionAndRotation(data.posX, data.posY, data.posZ, data.pitch, data.yaw);
+        //global.server.notifyPlayerPosition(this);
     }
 
     handleMessage(data)
@@ -339,13 +329,21 @@ class Player
         if (data.message.startsWith('/'))
             this.handleCommand(data.message.split(' '));
         else
-            global.server.notifyPlayerMessage(this, data.message);
+            global.server.notifyPlayerMessage(this, data.message, data.messageType);
     }
 
     handleCommand(args)
     {
+        if (!global.server.handleEventViaPlugin(EventType.PlayerCommand, {player: this, cmdArgs: args}))
+            return;
+
         switch (args[0])
         {
+            case '/pos':
+            case '/position':
+                this.sendMessage(`&ePosition: &cX &e${this.position.posX}, &aY &e${this.position.posY}, &9Z &e${this.position.posZ}`)
+                break;
+
             case '/level':
                 var code = global.server.sendPlayerToLevel(this, args[1]);
                 if (code == 1)
@@ -391,14 +389,14 @@ class Player
     {
         if (data.mode == 0x1)
         {
-            this.currentLevel.setBlock(data.posX, data.posY, data.posZ, data.blockType);
-            global.server.notifyBlockPlaced(this, data.posX, data.posY, data.posZ, data.blockType);
-            return;
+            if (global.server.notifyBlockPlaced(this, data.posX, data.posY, data.posZ, data.blockType))
+                this.currentLevel.setBlock(data.posX, data.posY, data.posZ, data.blockType);
         }
         if (data.mode == 0x0)
         {
-            this.currentLevel.setBlock(data.posX, data.posY, data.posZ, 0);
-            global.server.notifyBlockRemoved(this, data.posX, data.posY, data.posZ);
+            var oldBlock = this.currentLevel.getBlock(data.posX, data.posY, data.posZ);
+            if (global.server.notifyBlockRemoved(this, data.posX, data.posY, data.posZ, oldBlock))
+                this.currentLevel.setBlock(data.posX, data.posY, data.posZ, 0);
         }
     }
 
@@ -418,8 +416,7 @@ class Player
 
     handleExtEntry(data)
     {
-        this.supportedExtensions.push(data.extName);
-        this.supportedExtensionVersions.push(data.version);
+        this.supportedExtensions.push(data);
         //console.log('Extension: ' + extensionName + ' (v' + extensionVersion + ')');
         this.extensionCount--;
         if (this.extensionCount == 0)
@@ -433,7 +430,7 @@ class Player
     handleError(err)
     {
         console.log(err);
-        this.disconnect(`Internal error: ${err}`);
+        this.disconnect(`Internal error: "${err}"`);
     }
 
     tickResponse()
@@ -478,10 +475,10 @@ class Player
         }
     }
 
-    sendMessage(message)
+    sendMessage(message, type = 0)
     {
         var messagePacket = serializePacket(PacketType.Message, {
-            playerID: 0x0,
+            messageType: type,
             message: message
         });
         this.socket.write(messagePacket);
@@ -489,13 +486,25 @@ class Player
 
     teleport(x, y, z)
     {
-        this.updatePositionAndRotation(x, y, z, 0, 0);
-        global.server.notifyPlayerTeleport(this, this.position);
+        if (global.server.notifyPlayerTeleport(this, this.position))
+            this.updatePositionAndRotation(x, y, z, 0, 0);
     }
 
     teleportCentered(x, y, z)
     {
         this.teleport(x + 0.5, y + 1.59375, z + 0.5);
+    }
+
+    supportsExtension(name, version)
+    {
+        if (!this.supportsCPE)
+            return false;
+        for (var extension of this.supportedExtensions)
+        {
+            if (extension.extName == name && extension.version == version)
+                return true;
+        }
+        return false;
     }
 }
 

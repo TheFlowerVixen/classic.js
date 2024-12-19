@@ -135,8 +135,29 @@ class Level
 
         player.socket.write(Buffer.concat(levelPackets));
 
-        // first position
+        // sending it twice; once for initial position, once for spawn position
         player.teleportCentered(this.spawnX, this.spawnY, this.spawnZ);
+        player.teleportCentered(this.spawnX, this.spawnY, this.spawnZ);
+
+        // delayed other players (doesnt work otherwise)
+        setTimeout(function() {
+            for (var otherPlayer of this.players)
+            {
+                if (otherPlayer.playerID != player.playerID && otherPlayer.isLoggedIn() && otherPlayer.currentLevel.levelName == player.currentLevel.levelName)
+                {
+                    var playerAdd = serializePacket(PacketType.AddPlayer, {
+                        playerID: otherPlayer.playerID,
+                        playerName: otherPlayer.username,
+                        posX: otherPlayer.position.posX,
+                        posY: otherPlayer.position.posY,
+                        posZ: otherPlayer.position.posZ,
+                        yaw: otherPlayer.position.yaw,
+                        pitch: otherPlayer.position.pitch
+                    });
+                    player.socket.write(playerAdd);
+                }
+            }
+        }.bind(this), 50);
     }
 
     getFlatBlockAtY(y)

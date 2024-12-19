@@ -5,6 +5,10 @@ const PacketType = require('./packet.js').PacketType;
 const serializePacket = require('./packet.js').serializePacket;
 const Player = require('./player.js').Player;
 const Level = require('./game/level.js').Level;
+const EventType = require('./event.js').EventType;
+
+// temp
+//const ExtensionsPlugin = require('../plugins/extensions.js').ExtensionsPlugin;
 
 const DefaultProperties = {
     serverName: "classic.js Server",
@@ -28,11 +32,17 @@ class Server
         this.serverKey = this.loadServerKey('SERVER_KEY');
         this.players = [];
         this.levels = this.loadLevels('levels');
+        this.plugins = [];
+        this.supportedExtensions = [];
 
         this.heartbeatInterval = null;
         this.updateInterval = null;
         this.autosaveInterval = null;
         this.ticksRan = 0;
+
+        //var extPlugin = new ExtensionsPlugin();
+        //extPlugin.onInit(this);
+        //this.plugins.push(extPlugin);
     }
 
     loadProperties(filePath)
@@ -54,7 +64,7 @@ class Server
         if (!fs.existsSync(filePath))
         {
             fs.writeFileSync(filePath, finalKey);
-            console.log(`${filePath} was generated. (NOTE: Do NOT lose this file or your users will not be able to authenticate!)`);
+            console.warn(`${filePath} was generated. (NOTE: Do NOT lose this file or your users will not be able to authenticate!)`);
         }
         else
             finalKey = fs.readFileSync(filePath);
@@ -67,22 +77,19 @@ class Server
             fs.mkdirSync(dirPath);
         var dir = fs.readdirSync(dirPath);
         var levels = {};
-        if (dir.length == 0)
+        for (var fileName of dir)
+        {
+            var lvlName = fileName.split('.')[0];
+            var lvl = new Level(lvlName);
+            lvl.loadLevel();
+            levels[lvlName] = lvl;
+        }
+        if (levels[this.properties.mainLevel] == undefined)
         {
             var main = new Level(this.properties.mainLevel, 256, 64, 256);
             main.fillFlatGrass();
             levels[this.properties.mainLevel] = main;
             main.saveLevel();
-        }
-        else
-        {
-            for (var fileName of dir)
-            {
-                var lvlName = fileName.split('.')[0];
-                var lvl = new Level(lvlName);
-                lvl.loadLevel();
-                levels[lvlName] = lvl;
-            }
         }
         return levels;
     }
@@ -203,6 +210,8 @@ class Server
            extensionCount: 0 
         });
         player.socket.write(extensionInfo);
+        for (var extension of this.supportedExtensions)
+            player.socket.write(serializePacket(PacketType.ExtEntry, extension));
     }
 
     sendPlayerToLevel(player, level)
@@ -228,6 +237,11 @@ class Server
         process.exit(exitCode);
     }
 
+    addSupportedExtension(extName, version)
+    {
+        this.supportedExtensions.push({extName: extName, version: version});
+    }
+
     getPlayerCount()
     {
         return this.players.length;
@@ -237,26 +251,54 @@ class Server
         TODO: turn these into events
     */
 
+    handleEventViaPlugin(id, args)
+    {
+        var result = true;
+        for (var plugin of this.plugins)
+        {
+            if (plugin.hasEventHandler(id))
+            {
+                var pluginResult = plugin.getEventHandler(id)(args);
+                if (!pluginResult)
+                    result = false;
+            }
+        }
+        return result;
+    }
+
     notifyPlayerConnected(player)
     {
+        if (!this.handleEventViaPlugin(EventType.PlayerConnected, {player: player}))
+            return false;
+
         for (var otherPlayer of this.players)
         {
             if (otherPlayer !== player)
                 otherPlayer.sendMessage(`&e${player.username} joined the game`);
         }
+
+        return true;
     }
 
     notifyPlayerDisconnected(player)
     {
+        if (!this.handleEventViaPlugin(EventType.PlayerDisconnected, {player: player}))
+            return false;
+
         for (var otherPlayer of this.players)
         {
             if (otherPlayer !== player)
                 otherPlayer.sendMessage(`&e${player.username} left the game`);
         }
+
+        return true;
     }
 
     notifyPlayerAdded(player)
     {
+        if (!this.handleEventViaPlugin(EventType.PlayerAdded, {player: player}))
+            return false;
+
         var playerAdd = serializePacket(PacketType.AddPlayer, {
             playerID: player.playerID,
             playerName: player.username,
@@ -271,10 +313,15 @@ class Server
             if (otherPlayer.playerID != player.playerID && otherPlayer.currentLevel.levelName == player.currentLevel.levelName)
                 otherPlayer.socket.write(playerAdd);
         }
+
+        return true;
     }
 
     notifyPlayerRemoved(player)
     {
+        if (!this.handleEventViaPlugin(EventType.PlayerRemoved, {player: player}))
+            return false;
+
         var playerRemove = serializePacket(PacketType.RemovePlayer, {
             playerID: player.playerID
         });
@@ -283,10 +330,15 @@ class Server
             if (otherPlayer.playerID != player.playerID && otherPlayer.currentLevel.levelName == player.currentLevel.levelName)
                 otherPlayer.socket.write(playerRemove);
         }
+
+        return true;
     }
 
-    notifyPlayerMessage(player, message)
+    notifyPlayerMessage(player, message, messageType)
     {
+        if (!this.handleEventViaPlugin(EventType.PlayerMessage, {player: player, message: message, messageType: messageType}))
+            return false;
+
         for (var otherPlayer of this.players)
         {
             if (player.localChat && otherPlayer.currentLevel.levelName == player.currentLevel.levelName)
@@ -294,6 +346,8 @@ class Server
             else
                 otherPlayer.sendMessage(`<${player.username}> ${message}`);
         }
+
+        return true;
     }
 
     notifyPlayerPosition(player)
@@ -340,7 +394,7 @@ class Server
             return; // no schmovement
         */
         if (player.position.posRotEquals(player.lastPosition))
-            return;
+            return true;
 
         var movePacket = serializePacket(PacketType.PlayerPosition, {
             playerID: player.playerID,
@@ -356,10 +410,15 @@ class Server
             if (otherPlayer.playerID != player.playerID && otherPlayer.currentLevel.levelName == player.currentLevel.levelName)
                 otherPlayer.socket.write(movePacket);
         }
+
+        return true;
     }
 
     notifyPlayerTeleport(player, position)
     {
+        if (!this.handleEventViaPlugin(EventType.PlayerAdded, {player: player}))
+            return false;
+
         for (var otherPlayer of this.players)
         {
             if (otherPlayer.currentLevel.levelName == player.currentLevel.levelName)
@@ -378,10 +437,24 @@ class Server
                 otherPlayer.socket.write(tpPacket);
             }
         }
+
+        return true;
     }
 
     notifyBlockPlaced(player, x, y, z, type)
     {
+        if (!this.handleEventViaPlugin(EventType.BlockPlaced, {player: player, posX: x, posY: y, posZ: z, type: type}))
+        {
+            var setBlock = serializePacket(PacketType.SetBlockServer, {
+                posX: x,
+                posY: y,
+                posZ: z,
+                blockType: 0
+            });
+            player.socket.write(setBlock);
+            return false;
+        }
+
         for (var otherPlayer of this.players)
         {
             if (otherPlayer.currentLevel.levelName == player.currentLevel.levelName)
@@ -395,10 +468,24 @@ class Server
                 otherPlayer.socket.write(setBlock);
             }
         }
+
+        return true;
     }
 
-    notifyBlockRemoved(player, x, y, z)
+    notifyBlockRemoved(player, x, y, z, type)
     {
+        if (!this.handleEventViaPlugin(EventType.BlockRemoved, {player: player, posX: x, posY: y, posZ: z}))
+        {
+            var setBlock = serializePacket(PacketType.SetBlockServer, {
+                posX: x,
+                posY: y,
+                posZ: z,
+                blockType: type
+            });
+            player.socket.write(setBlock);
+            return false;
+        }
+
         for (var otherPlayer of this.players)
         {
             if (otherPlayer.currentLevel.levelName == player.currentLevel.levelName)
@@ -412,6 +499,8 @@ class Server
                 otherPlayer.socket.write(setBlock);
             }
         }
+
+        return true;
     }
 }
 
