@@ -16,8 +16,7 @@ const PlayerState = {
 
 const DefaultUserData = {
     rank: 0,
-    password: "",
-    lastLevel: 0
+    password: ""
 }
 
 class PlayerPosition
@@ -193,14 +192,6 @@ class Player
                 return;
             }
 
-            //console.log(`Received packet ID 0x${packetID.toString(16)}`);
-            if (this.playerState == PlayerState.Connected && packet.id != 0)
-            {
-                // was supposed to send a handshake...
-                this.disconnect('You need to log in!');
-                return;
-            }
-
             if (!this.handlePacketViaPlugin(packet))
                 continue;
 
@@ -270,8 +261,7 @@ class Player
         else if (this.playerState != PlayerState.SentHandshake)
         {
             // client shouldn't have sent another handshake, bail
-            this.socket.destroy();
-            this.playerState == PlayerState.Disconnected;
+            this.disconnect('You need to log in!');
             return;
         }
 
@@ -344,6 +334,7 @@ class Player
                 this.sendMessage(`&ePosition: &cX &e${this.position.posX}, &aY &e${this.position.posY}, &9Z &e${this.position.posZ}`)
                 break;
 
+            case '/lvl':
             case '/level':
                 var code = global.server.sendPlayerToLevel(this, args[1]);
                 if (code == 1)
@@ -352,6 +343,7 @@ class Player
                     this.sendMessage('&cYou are already in this level!');
                 break;
             
+            case '/lc':
             case '/local':
                 if (!this.localChat)
                 {
@@ -360,6 +352,7 @@ class Player
                 }
                 break;
             
+            case '/gc':
             case '/global':
                 if (this.localChat)
                 {
@@ -372,6 +365,7 @@ class Player
                 this.disconnect('See ya!');
                 break;
             
+            case '/teleport':
             case '/tp':
                 var x = parseInt(args[1]);
                 var y = parseInt(args[2]);
@@ -380,7 +374,7 @@ class Player
                 break;
             
             case '/stop':
-                global.server.shutDownServer(1);
+                global.server.shutDownServer(0);
                 break;
         }
     }
