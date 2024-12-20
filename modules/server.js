@@ -6,6 +6,7 @@ const serializePacket = require('./packet.js').serializePacket;
 const Player = require('./player.js').Player;
 const Level = require('./game/level.js').Level;
 const EventType = require('./event.js').EventType;
+const Broadcaster = require('./broadcast.js').Broadcaster;
 
 // temp
 const ExtensionsPlugin = require('../plugins/extensions.js').ExtensionsPlugin;
@@ -13,13 +14,18 @@ const ExtensionsPlugin = require('../plugins/extensions.js').ExtensionsPlugin;
 const DefaultProperties = {
     serverName: "classic.js Server",
     motd: "A Nice Server",
-    password: "",
     port: 25565,
     maxPlayers: 20,
 
     mainLevel: "main",
     autosaveInterval: 10,
-    disallowVanillaClients: false
+    disallowVanillaClients: false,
+
+    broadcast: true,
+    verifyNames: true,
+    broadcastInterval: 45,
+    listName: "[AWESOME] Classic Server",
+    public: false
 }
 
 class Server
@@ -27,6 +33,7 @@ class Server
     constructor()
     {
         this.netServer = null;
+        this.broadcaster = new Broadcaster('classicube.net', false);
         
         this.properties = this.loadProperties('properties.json');
         this.serverKey = this.loadServerKey('SERVER_KEY');
@@ -108,6 +115,8 @@ class Server
         this.heartbeatInterval = setInterval(this.heartbeat.bind(this), 20 * 50);
         this.updateInterval = setInterval(this.update.bind(this), 50);
         this.autosaveInterval = setInterval(this.autosave.bind(this), this.properties.autosaveInterval * 20 * 50);
+        if (this.properties.broadcast)
+            this.broadcaster.startBroadcasting();
     }
 
     onServerReady()
@@ -156,7 +165,7 @@ class Server
         for (var player of this.players)
         {
             if (player.isLoggedIn() && !player.isDisconnected())
-                player.socket.write(serializePacket(PacketType.ClientPing, {}));
+                player.sendPacket(PacketType.ClientPing);
         }
     }
 
@@ -193,30 +202,27 @@ class Server
 
     sendServerHandshake(player)
     {
-        var handshake = serializePacket(PacketType.Handshake, {
+        player.sendPacket(PacketType.Handshake, {
             protocolVersion: 0x07,
             name: this.properties.serverName,
             extra: this.properties.motd,
             supportByte: 0x0
         });
-        player.socket.write(handshake);
     }
 
     sendExtensionInfo(player)
     {
         // info
-        var extensionInfo = serializePacket(PacketType.ExtInfo, {
+        player.sendPacket(PacketType.ExtInfo, {
            software: "classic.js Alpha 0",
            extensionCount: 0 
         });
-        player.socket.write(extensionInfo);
         for (var extension of this.supportedExtensions)
-            player.socket.write(serializePacket(PacketType.ExtEntry, extension));
+            player.sendPacket(PacketType.ExtEntry, extension);
 
-        var blockSupportPacket = serializePacket(PacketType.CustomBlockSupportLevel, {
+        player.sendPacket(PacketType.CustomBlockSupportLevel, {
             supportLevel: 1
         });
-        player.socket.write(blockSupportPacket);
     }
 
     sendPlayerToLevel(player, level)
@@ -316,7 +322,7 @@ class Server
         for (var otherPlayer of this.players)
         {
             if (otherPlayer.playerID != player.playerID && otherPlayer.currentLevel.levelName == player.currentLevel.levelName)
-                otherPlayer.socket.write(playerAdd);
+                otherPlayer.sendPacketChunk(playerAdd);
         }
 
         return true;
@@ -333,7 +339,7 @@ class Server
         for (var otherPlayer of this.players)
         {
             if (otherPlayer.playerID != player.playerID && otherPlayer.currentLevel.levelName == player.currentLevel.levelName)
-                otherPlayer.socket.write(playerRemove);
+                otherPlayer.sendPacketChunk(playerRemove);
         }
 
         return true;
@@ -413,7 +419,7 @@ class Server
         for (var otherPlayer of this.players)
         {
             if (otherPlayer.playerID != player.playerID && otherPlayer.currentLevel.levelName == player.currentLevel.levelName)
-                otherPlayer.socket.write(movePacket);
+                otherPlayer.sendPacketChunk(movePacket);
         }
 
         return true;
@@ -429,9 +435,9 @@ class Server
             if (otherPlayer.currentLevel.levelName == player.currentLevel.levelName)
             {
                 var id = player.playerID;
-                if (player === otherPlayer)
+                if (player.playerID == otherPlayer.playerID)
                     id = -1;
-                var tpPacket = serializePacket(PacketType.PlayerPosition, {
+                otherPlayer.sendPacket(PacketType.PlayerPosition, {
                     playerID: id,
                     posX: position.posX,
                     posY: position.posY,
@@ -439,7 +445,6 @@ class Server
                     yaw: position.yaw,
                     pitch: position.pitch
                 });
-                otherPlayer.socket.write(tpPacket);
             }
         }
 
@@ -450,13 +455,12 @@ class Server
     {
         if (!this.handleEventViaPlugin(EventType.BlockPlaced, {player: player, posX: x, posY: y, posZ: z, type: type}))
         {
-            var setBlock = serializePacket(PacketType.SetBlockServer, {
+            player.sendPacket(PacketType.SetBlockServer, {
                 posX: x,
                 posY: y,
                 posZ: z,
                 blockType: 0
             });
-            player.socket.write(setBlock);
             return false;
         }
 
@@ -464,13 +468,12 @@ class Server
         {
             if (otherPlayer.currentLevel.levelName == player.currentLevel.levelName)
             {
-                var setBlock = serializePacket(PacketType.SetBlockServer, {
+                otherPlayer.sendPacket(PacketType.SetBlockServer, {
                     posX: x,
                     posY: y,
                     posZ: z,
                     blockType: otherPlayer.getPlayerSpecificBlock(type)
                 });
-                otherPlayer.socket.write(setBlock);
             }
         }
 
@@ -481,13 +484,12 @@ class Server
     {
         if (!this.handleEventViaPlugin(EventType.BlockRemoved, {player: player, posX: x, posY: y, posZ: z}))
         {
-            var setBlock = serializePacket(PacketType.SetBlockServer, {
+            player.sendPacket(PacketType.SetBlockServer, {
                 posX: x,
                 posY: y,
                 posZ: z,
                 blockType: type
             });
-            player.socket.write(setBlock);
             return false;
         }
 
@@ -495,13 +497,12 @@ class Server
         {
             if (otherPlayer.currentLevel.levelName == player.currentLevel.levelName)
             {
-                var setBlock = serializePacket(PacketType.SetBlockServer, {
+                otherPlayer.sendPacket(PacketType.SetBlockServer, {
                     posX: x,
                     posY: y,
                     posZ: z,
                     blockType: 0
                 });
-                otherPlayer.socket.write(setBlock);
             }
         }
 

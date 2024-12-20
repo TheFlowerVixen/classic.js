@@ -115,6 +115,7 @@ class Player
 
         this.responseTime = 0;
         this.playerState = PlayerState.Connected;
+        this.packetsSent = 0;
 
         this.supportsCPE = false;
         this.supportedExtensions = [];
@@ -310,10 +311,14 @@ class Player
 
         this.username = data.name;
         this.authKey = data.extra;
-        if (global.server.properties.password != "" && this.authKey != global.server.properties.password)
+        if (global.server.properties.broadcast && global.server.properties.verifyNames)
         {
-            this.disconnect("Invalid password!");
-            return;
+            var hashCheck = crypto.hash('md5', global.server.broadcaster.salt + this.username);
+            if (hashCheck != this.authKey)
+            {
+                this.disconnect("Unable to authenticate! Please try logging in again");
+                return;
+            }
         }
 
         if (data.supportByte == 0x42)
@@ -483,10 +488,9 @@ class Player
     disconnect(reason)
     {
         console.log(`Disconnecting ${this.username} with reason "${reason}"`)
-        var disconnectPacket = serializePacket(PacketType.DisconnectPlayer, {
+        this.sendPacket(PacketType.DisconnectPlayer, {
             reason: reason
         });
-        this.socket.write(disconnectPacket);
     }
 
     isLoggedIn()
@@ -497,6 +501,22 @@ class Player
     isDisconnected()
     {
         return this.playerState == PlayerState.Disconnected;
+    }
+    
+    sendPacketChunk(chunk)
+    {
+        this.socket.write(chunk, function(err) {
+            if (err)
+                console.error(err);
+            else
+                this.packetsSent++;
+        }.bind(this));
+        console.log(`${this.username} has been sent ${this.packetsSent} packets`);
+    }
+
+    sendPacket(id, data = {})
+    {
+        this.sendPacketChunk(serializePacket(id, data));
     }
 
     sendToLevel(level)
@@ -515,21 +535,19 @@ class Player
     {
         if (this.supportsExtension("MessageTypes", 1) && type != 0)
         {
-            var messagePacket = serializePacket(PacketType.Message, {
+            this.sendPacket(PacketType.Message, {
                 messageType: type,
                 message: message
             });
-            this.socket.write(messagePacket);
         }
         else
         {
             for (var messagePart of message.replace(wordWrap, '$1\n').split('\n'))
             {
-                var messagePacket = serializePacket(PacketType.Message, {
+                this.sendPacket(PacketType.Message, {
                     messageType: type,
                     message: messagePart
                 });
-                this.socket.write(messagePacket);
             }
         }
     }
@@ -562,10 +580,9 @@ class Player
         if (this.supportsExtension("ClickDistance", 1))
         {
             this.clickDistance = clickDistance;
-            var clickPacket = serializePacket(PacketType.ClickDistance, {
+            this.sendPacket(PacketType.ClickDistance, {
                 distance: clickDistance
             });
-            this.socket.write(clickPacket);
             return true;
         }
         return false;
@@ -575,11 +592,10 @@ class Player
     {
         if (this.supportsExtension("HeldBlock", 1))
         {
-            var holdPacket = serializePacket(PacketType.HoldThis, {
+            this.sendPacket(PacketType.HoldThis, {
                 blockToHold: block,
                 preventChange: preventChange ? 1 : 0
             });
-            this.socket.write(holdPacket);
             return true;
         }
         return false;

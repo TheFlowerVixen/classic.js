@@ -98,7 +98,7 @@ class Level
         var levelPackets = [];
 
         // level init
-        levelPackets.push(serializePacket(PacketType.LevelInit, {}));
+        player.sendPacket(PacketType.LevelInit);
 
         // compress block data
         var blocksCopy = [];
@@ -117,26 +117,22 @@ class Level
             chunkSize = Math.min(remainingBlocks, chunkBuffer.length);
             compressedBlocks.copy(chunkBuffer, 0, position, position + chunkSize);
             
-            var chunkPacket = serializePacket(PacketType.LevelChunk, {
+            player.sendPacket(PacketType.LevelChunk, {
                 chunkLength: chunkSize,
                 chunkData: chunkBuffer,
                 percentComplete: (position + chunkSize) * 100 / compressedBlocks.length
             });
-            levelPackets.push(chunkPacket);
 
             remainingBlocks -= chunkSize;
             position += chunkSize;
         }
 
         // level finalize
-        var finalPacket = serializePacket(PacketType.LevelEnd, {
+        player.sendPacket(PacketType.LevelEnd, {
             sizeX: this.sizeX,
             sizeY: this.sizeY,
             sizeZ: this.sizeZ
         });
-        levelPackets.push(finalPacket);
-
-        player.socket.write(Buffer.concat(levelPackets));
 
         // sending it twice; once for initial position, once for spawn position
         player.teleportCentered(this.spawnX, this.spawnY, this.spawnZ);
@@ -148,7 +144,7 @@ class Level
             {
                 if (otherPlayer.playerID != player.playerID && otherPlayer.isLoggedIn() && otherPlayer.currentLevel.levelName == player.currentLevel.levelName)
                 {
-                    var playerAdd = serializePacket(PacketType.AddPlayer, {
+                    player.sendPacket(PacketType.AddPlayer, {
                         playerID: otherPlayer.playerID,
                         playerName: otherPlayer.username,
                         posX: otherPlayer.position.posX,
@@ -157,7 +153,6 @@ class Level
                         yaw: otherPlayer.position.yaw,
                         pitch: otherPlayer.position.pitch
                     });
-                    player.socket.write(playerAdd);
                 }
             }
         }.bind(this), 50);

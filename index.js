@@ -1,5 +1,6 @@
 const Server = require('./modules/server.js').Server;
 
+Error.stackTraceLimit = Infinity;
 global.server = new Server();
 global.server.addSupportedExtension("ClickDistance", 1);
 global.server.addSupportedExtension("CustomBlocks", 1);
