@@ -5,11 +5,7 @@ const PacketType = require('./packet.js').PacketType;
 const serializePacket = require('./packet.js').serializePacket;
 const Player = require('./player.js').Player;
 const Level = require('./game/level.js').Level;
-const EventType = require('./event.js').EventType;
 const Broadcaster = require('./broadcast.js').Broadcaster;
-
-// temp
-const ExtensionsPlugin = require('../plugins/extensions.js').ExtensionsPlugin;
 
 const DefaultProperties = {
     serverName: "classic.js Server",
@@ -19,13 +15,16 @@ const DefaultProperties = {
 
     mainLevel: "main",
     autosaveInterval: 10,
-    disallowVanillaClients: false,
+    allowVanillaClients: true,
+    allowWebClients: true,
 
     broadcast: true,
-    verifyNames: true,
     broadcastInterval: 45,
-    listName: "[AWESOME] Classic Server",
-    public: false
+    broadcastURL: 'classicube.net',
+    useHTTPS: true,
+    public: false,
+    verifyNames: true,
+    listName: "classic.js Server",
 }
 
 class Server
@@ -33,7 +32,6 @@ class Server
     constructor()
     {
         this.netServer = null;
-        this.broadcaster = new Broadcaster('classicube.net', false);
         
         this.properties = this.loadProperties('properties.json');
         this.serverKey = this.loadServerKey('SERVER_KEY');
@@ -41,15 +39,12 @@ class Server
         this.levels = this.loadLevels('levels');
         this.plugins = [];
         this.supportedExtensions = [];
+        this.broadcaster = new Broadcaster(this);
 
         this.heartbeatInterval = null;
         this.updateInterval = null;
         this.autosaveInterval = null;
         this.ticksRan = 0;
-
-        //var extPlugin = new ExtensionsPlugin();
-        //extPlugin.onInit(this);
-        //this.plugins.push(extPlugin);
     }
 
     loadProperties(filePath)
@@ -142,8 +137,7 @@ class Server
         var server = global.server;
         //console.log("Client connected, awaiting information...");
         socket.on('close', server.onClientDisconnected);
-        var player = new Player(server.players.length, socket);
-        server.players.push(player);
+        new Player(server, socket);
     }
 
     onClientDisconnected(abrupt)
@@ -200,14 +194,20 @@ class Server
             level.saveLevel();
     }
 
-    sendServerHandshake(player)
+    logInPlayer(player)
     {
+        var collisionPlayer = this.getPlayer(player.username);
+        if (collisionPlayer != null)
+            collisionPlayer.disconnect('Name collision (you were logged in elsewhere)');
+
         player.sendPacket(PacketType.Handshake, {
             protocolVersion: 0x07,
             name: this.properties.serverName,
             extra: this.properties.motd,
             supportByte: 0x0
         });
+        player.assignPlayerID(this.players.length);
+        this.players.push(player);
     }
 
     sendExtensionInfo(player)
@@ -258,58 +258,36 @@ class Server
         return this.players.length;
     }
 
-    /*
-        TODO: turn these into events
-    */
-
-    handleEventViaPlugin(id, args)
+    getPlayer(username)
     {
-        var result = true;
-        for (var plugin of this.plugins)
+        for (var player of this.players)
         {
-            if (plugin.hasEventHandler(id))
-            {
-                var pluginResult = plugin.getEventHandler(id)(args);
-                if (!pluginResult)
-                    result = false;
-            }
+            if (player.username == username)
+                return player;
         }
-        return result;
+        return null;
     }
 
     notifyPlayerConnected(player)
     {
-        if (!this.handleEventViaPlugin(EventType.PlayerConnected, {player: player}))
-            return false;
-
         for (var otherPlayer of this.players)
         {
             if (otherPlayer !== player)
                 otherPlayer.sendMessage(`&e${player.username} joined the game`);
         }
-
-        return true;
     }
 
     notifyPlayerDisconnected(player)
     {
-        if (!this.handleEventViaPlugin(EventType.PlayerDisconnected, {player: player}))
-            return false;
-
         for (var otherPlayer of this.players)
         {
             if (otherPlayer !== player)
                 otherPlayer.sendMessage(`&e${player.username} left the game`);
         }
-
-        return true;
     }
 
     notifyPlayerAdded(player)
     {
-        if (!this.handleEventViaPlugin(EventType.PlayerAdded, {player: player}))
-            return false;
-
         var playerAdd = serializePacket(PacketType.AddPlayer, {
             playerID: player.playerID,
             playerName: player.username,
@@ -324,15 +302,10 @@ class Server
             if (otherPlayer.playerID != player.playerID && otherPlayer.currentLevel.levelName == player.currentLevel.levelName)
                 otherPlayer.sendPacketChunk(playerAdd);
         }
-
-        return true;
     }
 
     notifyPlayerRemoved(player)
     {
-        if (!this.handleEventViaPlugin(EventType.PlayerRemoved, {player: player}))
-            return false;
-
         var playerRemove = serializePacket(PacketType.RemovePlayer, {
             playerID: player.playerID
         });
@@ -341,15 +314,10 @@ class Server
             if (otherPlayer.playerID != player.playerID && otherPlayer.currentLevel.levelName == player.currentLevel.levelName)
                 otherPlayer.sendPacketChunk(playerRemove);
         }
-
-        return true;
     }
 
     notifyPlayerMessage(player, message, messageType)
     {
-        if (!this.handleEventViaPlugin(EventType.PlayerMessage, {player: player, message: message, messageType: messageType}))
-            return false;
-
         for (var otherPlayer of this.players)
         {
             if (player.localChat && otherPlayer.currentLevel.levelName == player.currentLevel.levelName)
@@ -357,55 +325,12 @@ class Server
             else
                 otherPlayer.sendMessage(`<${player.username}> ${message}`);
         }
-
-        return true;
     }
 
     notifyPlayerPosition(player)
     {
-        // check difference
-        /*
-        var movedPos = !player.position.positionEquals(player.lastPosition);
-        var movedRot = !player.position.rotationEquals(player.lastPosition);
-        var xDiff = player.position.posXDifference(player.lastPosition);
-        var yDiff = player.position.posYDifference(player.lastPosition);
-        var zDiff = player.position.posZDifference(player.lastPosition);
-        var pitchDiff = player.position.pitchDifference(player.lastPosition);
-        var yawDiff = player.position.yawDifference(player.lastPosition);
-        var movePacket;
-        if (movedPos && movedRot)
-        {
-            movePacket = serializePacket(PacketType.PosRotUpdate, {
-                playerID: player.playerID,
-                deltaX: player.lastPosition.posX - player.position.posX,
-                deltaY: player.lastPosition.posY - player.position.posY,
-                deltaZ: player.lastPosition.posZ - player.position.posZ,
-                deltaYaw: player.lastPosition.yaw - player.position.yaw,
-                deltaPitch: player.lastPosition.pitch - player.position.pitch
-            });
-        }
-        else if (movedPos)
-        {
-            movePacket = serializePacket(PacketType.PosUpdate, {
-                playerID: player.playerID,
-                deltaX: player.lastPosition.posX - player.position.posX,
-                deltaY: player.lastPosition.posY - player.position.posY,
-                deltaZ: player.lastPosition.posZ - player.position.posZ
-            });
-        }
-        else if (movedRot)
-        {
-            movePacket = serializePacket(PacketType.PosRotUpdate, {
-                playerID: player.playerID,
-                deltaYaw: player.lastPosition.yaw - player.position.yaw,
-                deltaPitch: player.lastPosition.pitch - player.position.pitch
-            });
-        }
-        else
-            return; // no schmovement
-        */
         if (player.position.posRotEquals(player.lastPosition))
-            return true;
+            return;
 
         var movePacket = serializePacket(PacketType.PlayerPosition, {
             playerID: player.playerID,
@@ -421,15 +346,10 @@ class Server
             if (otherPlayer.playerID != player.playerID && otherPlayer.currentLevel.levelName == player.currentLevel.levelName)
                 otherPlayer.sendPacketChunk(movePacket);
         }
-
-        return true;
     }
 
     notifyPlayerTeleport(player, position)
     {
-        if (!this.handleEventViaPlugin(EventType.PlayerAdded, {player: player}))
-            return false;
-
         for (var otherPlayer of this.players)
         {
             if (otherPlayer.currentLevel.levelName == player.currentLevel.levelName)
@@ -447,23 +367,10 @@ class Server
                 });
             }
         }
-
-        return true;
     }
 
     notifyBlockPlaced(player, x, y, z, type)
     {
-        if (!this.handleEventViaPlugin(EventType.BlockPlaced, {player: player, posX: x, posY: y, posZ: z, type: type}))
-        {
-            player.sendPacket(PacketType.SetBlockServer, {
-                posX: x,
-                posY: y,
-                posZ: z,
-                blockType: 0
-            });
-            return false;
-        }
-
         for (var otherPlayer of this.players)
         {
             if (otherPlayer.currentLevel.levelName == player.currentLevel.levelName)
@@ -476,23 +383,10 @@ class Server
                 });
             }
         }
-
-        return true;
     }
 
     notifyBlockRemoved(player, x, y, z, type)
     {
-        if (!this.handleEventViaPlugin(EventType.BlockRemoved, {player: player, posX: x, posY: y, posZ: z}))
-        {
-            player.sendPacket(PacketType.SetBlockServer, {
-                posX: x,
-                posY: y,
-                posZ: z,
-                blockType: type
-            });
-            return false;
-        }
-
         for (var otherPlayer of this.players)
         {
             if (otherPlayer.currentLevel.levelName == player.currentLevel.levelName)
@@ -505,8 +399,6 @@ class Server
                 });
             }
         }
-
-        return true;
     }
 }
 

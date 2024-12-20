@@ -4,7 +4,6 @@ const PacketType = require('./packet.js').PacketType;
 const PacketError = require('./packet.js').PacketError;
 const serializePacket = require('./packet.js').serializePacket;
 const deserializePacket = require('./packet.js').deserializePacket;
-const EventType = require('./event.js').EventType;
 
 const PlayerState = {
     Connected: 0,
@@ -95,15 +94,17 @@ class PlayerPosition
 
 class Player
 {
-    constructor(playerID, socket)
+    constructor(server, socket)
     {
+        this.server = server;
         this.socket = socket;
-        this.playerID = playerID;
 
         this.socket.on('data', this.handleData.bind(this));
         this.socket.on('error', this.handleError.bind(this));
 
-        this.clientSoftware = "Minecraft Classic 0.30";
+        this.playerState = PlayerState.Connected;
+        this.clientSoftware = "";
+        this.playerID = -1;
         this.username = "";
         this.authKey = "";
         this.userData = null;
@@ -114,7 +115,6 @@ class Player
         this.lastPosition = this.position;
 
         this.responseTime = 0;
-        this.playerState = PlayerState.Connected;
         this.packetsSent = 0;
 
         this.supportsCPE = false;
@@ -146,7 +146,7 @@ class Player
 
     setPassword(password)
     {
-        var keys = global.server.getCipherKeys();
+        var keys = this.server.getCipherKeys();
         const cipher = crypto.createCipheriv('aes-256-cbc', keys[0], keys[1]);
         var encrypted = cipher.update(password, 'utf8', 'hex');
         encrypted += cipher.final('hex');
@@ -157,7 +157,7 @@ class Player
     {
         try
         {
-            var keys = global.server.getCipherKeys();
+            var keys = this.server.getCipherKeys();
             const decipher = crypto.createDecipheriv('aes-256-cbc', keys[0], keys[1]);
             var decrypted = decipher.update(this.userData.password, 'hex', 'utf8');
             decrypted += decipher.final('utf8');
@@ -170,31 +170,31 @@ class Player
         }
     }
 
+    assignPlayerID(playerID)
+    {
+        this.playerID = playerID;
+    }
+
     onLogin()
     {
         this.packetWaitingFor = -1;
-        console.log(`Player id ${this.playerID} logged in as ${this.username} (auth key ${this.authKey}, supports CPE: ${this.supportsCPE})`);
+        console.log(`Player logged in as ${this.username} (auth key ${this.authKey}, supports CPE: ${this.supportsCPE})`);
         this.userData = this.loadUserData(`users/${this.username}.json`);
         this.playerState = PlayerState.LoggedIn;
-        if (!global.server.notifyPlayerConnected(this))
-        {
-            // limbo (event is expected to disconnect player)
-            return;
-        }
-
-        global.server.sendServerHandshake(this);
-        global.server.sendPlayerToLevel(this, global.server.properties.mainLevel);
+        this.server.notifyPlayerConnected(this);
+        this.server.logInPlayer(this);
+        this.server.sendPlayerToLevel(this, this.server.properties.mainLevel);
     }
 
     onDisconnect()
     {
-        console.log(`Player id ${this.playerID} disconnected`);
+        console.log(`Player disconnected`);
         this.playerState == PlayerState.Disconnected;
         if (this.isLoggedIn())
         {
             this.userData.lastPosition = this.position;
             this.saveUserData(`users/${this.username}.json`, this.userData);
-            global.server.notifyPlayerDisconnected(this);
+            this.server.notifyPlayerDisconnected(this);
             this.currentLevel.removePlayer(this);
         }
     }
@@ -207,6 +207,12 @@ class Player
 
     handleData(data)
     {
+        if (data.toString('utf8').startsWith('GET'))
+        {
+            console.log(data.toString('utf8'));
+            return;
+        }
+
         var offset = 0;
         while (offset < data.length)
         {
@@ -260,7 +266,7 @@ class Player
     handlePacketViaPlugin(packet)
     {
         var result = true;
-        for (var plugin of global.server.plugins)
+        for (var plugin of this.server.plugins)
         {
             if (plugin.hasPacketHandler(packet.id))
             {
@@ -297,9 +303,9 @@ class Player
             return;
         }
 
-        if (global.server.getPlayerCount() > global.server.properties.maxPlayers)
+        if (this.server.getPlayerCount() > this.server.properties.maxPlayers)
         {
-            this.disconnect(`Server is full! (max ${global.server.properties.maxPlayers})`);
+            this.disconnect(`Server is full! (max ${this.server.properties.maxPlayers})`);
             return;
         }
 
@@ -311,9 +317,9 @@ class Player
 
         this.username = data.name;
         this.authKey = data.extra;
-        if (global.server.properties.broadcast && global.server.properties.verifyNames)
+        if (this.server.properties.broadcast && this.server.properties.verifyNames)
         {
-            var hashCheck = crypto.hash('md5', global.server.broadcaster.salt + this.username);
+            var hashCheck = crypto.hash('md5', this.server.broadcaster.salt + this.username);
             if (hashCheck != this.authKey)
             {
                 this.disconnect("Unable to authenticate! Please try logging in again");
@@ -326,7 +332,7 @@ class Player
             this.supportsCPE = true;
             this.extensionCount = 0;
         }
-        else if (global.server.properties.disallowVanillaClients)
+        else if (!this.server.properties.allowVanillaClients)
         {
             this.disconnect("Your client is unsupported!");
             return;
@@ -334,11 +340,12 @@ class Player
 
         if (this.supportsCPE)
         {
-            global.server.sendExtensionInfo(this);
+            this.server.sendExtensionInfo(this);
             this.playerState = PlayerState.SendingExtensions;
         }
         else
         {
+            this.clientSoftware = "Vanilla";
             this.onLogin();
         }
     }
@@ -346,7 +353,6 @@ class Player
     handlePosition(data)
     {
         this.updatePositionAndRotation(data.posX, data.posY, data.posZ, data.pitch, data.yaw);
-        //global.server.notifyPlayerPosition(this);
     }
 
     handleMessage(data)
@@ -368,14 +374,11 @@ class Player
         if (message.startsWith('/'))
             this.handleCommand(message.split(' '));
         else
-            global.server.notifyPlayerMessage(this, message, data.messageType);
+            this.server.notifyPlayerMessage(this, message, data.messageType);
     }
 
     handleCommand(args)
     {
-        if (!global.server.handleEventViaPlugin(EventType.PlayerCommand, {player: this, cmdArgs: args}))
-            return;
-
         switch (args[0])
         {
             case '/pos':
@@ -385,7 +388,7 @@ class Player
 
             case '/lvl':
             case '/level':
-                var code = global.server.sendPlayerToLevel(this, args[1]);
+                var code = this.server.sendPlayerToLevel(this, args[1]);
                 if (code == 1)
                     this.sendMessage('&cThat level does not exist!');
                 if (code == 2)
@@ -423,7 +426,7 @@ class Player
                 break;
             
             case '/stop':
-                global.server.shutDownServer(0);
+                this.server.shutDownServer(0);
                 break;
         }
     }
@@ -432,14 +435,14 @@ class Player
     {
         if (data.mode == 0x1)
         {
-            if (global.server.notifyBlockPlaced(this, data.posX, data.posY, data.posZ, data.blockType))
-                this.currentLevel.setBlock(data.posX, data.posY, data.posZ, data.blockType);
+            this.server.notifyBlockPlaced(this, data.posX, data.posY, data.posZ, data.blockType);
+            this.currentLevel.setBlock(data.posX, data.posY, data.posZ, data.blockType);
         }
         if (data.mode == 0x0)
         {
             var oldBlock = this.currentLevel.getBlock(data.posX, data.posY, data.posZ);
-            if (global.server.notifyBlockRemoved(this, data.posX, data.posY, data.posZ, oldBlock))
-                this.currentLevel.setBlock(data.posX, data.posY, data.posZ, 0);
+            this.server.notifyBlockRemoved(this, data.posX, data.posY, data.posZ, oldBlock)
+            this.currentLevel.setBlock(data.posX, data.posY, data.posZ, 0);
         }
     }
 
@@ -487,6 +490,7 @@ class Player
 
     disconnect(reason)
     {
+        this.playerState == PlayerState.Disconnected;
         console.log(`Disconnecting ${this.username} with reason "${reason}"`)
         this.sendPacket(PacketType.DisconnectPlayer, {
             reason: reason
@@ -507,11 +511,11 @@ class Player
     {
         this.socket.write(chunk, function(err) {
             if (err)
-                console.error(err);
+                console.log(err);
             else
                 this.packetsSent++;
         }.bind(this));
-        console.log(`${this.username} has been sent ${this.packetsSent} packets`);
+        //console.log(`${this.username} has been sent ${this.packetsSent} packets`);
     }
 
     sendPacket(id, data = {})
@@ -554,8 +558,8 @@ class Player
 
     teleport(x, y, z)
     {
-        if (global.server.notifyPlayerTeleport(this, this.position))
-            this.updatePositionAndRotation(x, y, z, 0, 0);
+        this.server.notifyPlayerTeleport(this, this.position);
+        this.updatePositionAndRotation(x, y, z, 0, 0);
     }
 
     teleportCentered(x, y, z)
