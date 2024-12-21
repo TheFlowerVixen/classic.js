@@ -4,9 +4,10 @@ const crypto = require('crypto');
 const PacketType = require('./packet.js').PacketType;
 const serializePacket = require('./packet.js').serializePacket;
 const Player = require('./player.js').Player;
-const Level = require('./game/level.js').Level;
-const LevelProperties = require('./game/level.js').LevelProperties;
+const Level = require('./level.js').Level;
+const LevelProperties = require('./level.js').LevelProperties;
 const Broadcaster = require('./broadcast.js').Broadcaster;
+const FlatLevelGenerator = require('./generator/flat.js').FlatLevelGenerator;
 
 const DefaultProperties = {
     serverName: "classic.js Server",
@@ -88,12 +89,7 @@ class Server
             levels[lvlName] = lvl;
         }
         if (levels[this.properties.mainLevel] == undefined)
-        {
-            var main = new Level(this.properties.mainLevel, 256, 64, 256);
-            main.fillFlatGrass();
-            levels[this.properties.mainLevel] = main;
-            main.saveLevel();
-        }
+            this.createLevel(this.properties.mainLevel, 256, 64, 256);
         return levels;
     }
 
@@ -267,6 +263,17 @@ class Server
                 return player;
         }
         return null;
+    }
+
+    createLevel(name, sizeX, sizeY, sizeZ)
+    {
+        if (this.levels[name] != undefined)
+            return false;
+        var level = new Level(name, sizeX, sizeY, sizeZ);
+        level.generateLevel(new FlatLevelGenerator([7, 1], [1, (sizeY / 2) - 4], [3, 2], [2, 1]));
+        this.levels[name] = level;
+        level.saveLevel();
+        return true;
     }
 
     notifyPlayerConnected(player)

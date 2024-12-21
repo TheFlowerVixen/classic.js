@@ -372,6 +372,15 @@ class Player
             case '/level':
                 switch (args[1])
                 {
+                    case 'create':
+                        var name = args[2];
+                        var sizeX = parseInt(args[3]);
+                        var sizeY = parseInt(args[4]);
+                        var sizeZ = parseInt(args[5]);
+                        var success = this.server.createLevel(name, sizeX, sizeY, sizeZ);
+                        console.log(success);
+                        break;
+
                     case 'goto':
                         var code = this.server.sendPlayerToLevel(this, args[2]);
                         if (code == 1)
@@ -381,16 +390,22 @@ class Player
                         break;
                     
                     case 'weather':
+                        if (!this.supportsCPE)
+                            this.sendMessage('&eNOTE: You are running a vanilla client, so you will not be able to see these changes.');
                         var success = this.currentLevel.setWeather(parseInt(args[2]));
                         console.log(success);
                         break;
                     
                     case 'textures':
+                        if (!this.supportsCPE)
+                            this.sendMessage('&eNOTE: You are running a vanilla client, so you will not be able to see these changes.');
                         var success = this.currentLevel.setTextures(args[2]);
                         console.log(success);
                         break;
                     
                     case 'property':
+                        if (!this.supportsCPE)
+                            this.sendMessage('&eNOTE: You are running a vanilla client, so you will not be able to see these changes.');
                         var success = this.currentLevel.setProperty(args[2], parseFloat(args[3]));
                         console.log(success);
                         break;

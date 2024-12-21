@@ -1,7 +1,7 @@
 const zlib = require('node:zlib');
 const fs = require('fs');
-const PacketType = require('../packet.js').PacketType;
-const serializePacket = require('../packet.js').serializePacket;
+const PacketType = require('./packet.js').PacketType;
+const serializePacket = require('./packet.js').serializePacket;
 
 const LevelProperties = [
     'sideBlockID',
@@ -78,28 +78,29 @@ class Level
 
     loadLevel()
     {
-        var path = `levels/${this.levelName}.lvl`;
-        if (fs.existsSync(path))
+        var binPath = `levels/${this.levelName}.lvl`;
+        var jsonPath = `levels/${this.levelName}.json`;
+        if (fs.existsSync(binPath) && fs.existsSync(jsonPath))
         {
-            var levelBuffer = zlib.gunzipSync(fs.readFileSync(path));
-            this.sizeX = levelBuffer.readUInt16BE(0);
-            this.sizeY = levelBuffer.readUInt16BE(2);
-            this.sizeZ = levelBuffer.readUInt16BE(4);
-            this.blocks = new Array(this.sizeX * this.sizeY * this.sizeZ);
-            for (var i = 0; i < this.blocks.length; i++)
-                this.blocks[i] = levelBuffer.readUInt8(6 + i);
+            Object.assign(this, JSON.parse(fs.readFileSync(jsonPath)));
+            this.decompressBlockData(fs.readFileSync(binPath));
         }
     }
 
     saveLevel()
     {
-        var dataBuffer = Buffer.alloc(6 + this.blocks.length);
-        dataBuffer.writeUInt16BE(this.sizeX, 0);
-        dataBuffer.writeUInt16BE(this.sizeY, 2);
-        dataBuffer.writeUInt16BE(this.sizeZ, 4);
-        for (var i = 0; i < this.blocks.length; i++)
-            dataBuffer.writeUInt8(this.blocks[i], 6 + i);
-        fs.writeFileSync(`levels/${this.levelName}.lvl`, zlib.gzipSync(dataBuffer));
+        fs.writeFileSync(`levels/${this.levelName}.json`, JSON.stringify({
+            sizeX: this.sizeX,
+            sizeY: this.sizeY,
+            sizeZ: this.sizeZ,
+            spawnX: this.spawnX,
+            spawnY: this.spawnY,
+            spawnZ: this.spawnZ,
+            customTextures: this.customTextures,
+            customWeather: this.customWeather,
+            customProperties: this.customProperties
+        }, null, 4));
+        fs.writeFileSync(`levels/${this.levelName}.lvl`, this.compressBlockData(this.blocks));
     }
 
     compressBlockData(blockData)
@@ -233,21 +234,7 @@ class Level
         }.bind(this), 50);
     }
 
-    getFlatBlockAtY(y)
-    {
-        if (y == 0)
-            return 7;
-        else if (y > 0 && y < 29)
-            return 1;
-        else if (y > 28 && y < 31)
-            return 3;
-        else if (y == 31)
-            return 2;
-        else
-            return 0;
-    }
-
-    fillFlatGrass()
+    generateLevel(generator)
     {
         for (var x = 0; x < this.sizeX; x++)
         {
@@ -256,7 +243,7 @@ class Level
                 for (var y = 0; y < this.sizeY; y++)
                 {
                     var index = this.flattenCoordinate(x, y, z);
-                    this.blocks[index] = this.getFlatBlockAtY(y);
+                    this.blocks[index] = generator.getBlock(x, y, z);
                 }
             }
         }
