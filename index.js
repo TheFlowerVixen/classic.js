@@ -8,4 +8,5 @@ global.server.addSupportedExtension("MessageTypes", 1);
 global.server.addSupportedExtension("LongerMessages", 1);
 global.server.addSupportedExtension("ChangeModel", 1);
 global.server.addSupportedExtension("FullCP437", 1);
+global.server.addSupportedExtension("EnvMapAspect", 2);
 global.server.startServer(25565);

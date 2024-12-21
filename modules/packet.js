@@ -3,14 +3,18 @@
 const DataType = {
 	Byte: 0,
 	UByte: 1,
-	UShort: 2,
-	UInt: 3,
-	Fixed: 4,
-	String: 5,
-	UntrimmedString: 6,
-	ByteArray: 7
+	Short: 2,
+	UShort: 3,
+	Int: 4,
+	UInt: 5,
+	Fixed: 6,
+	String: 7,
+	UntrimmedString: 8,
+	DoubleString: 9,
+	DoubleUntrimmedString: 10,
+	ByteArray: 11
 }
-const DataTypeCount = 7;
+const DataTypeCount = 11;
 
 const PacketError = {
 	InvalidID: 0,
@@ -44,7 +48,10 @@ const PacketType = {
     HoldThis: 0x14,
 
 	ChangeModel: 0x1D,
-	EnvWeatherType: 0x1F
+	EnvSetWeatherType: 0x1F,
+	
+	SetMapEnvUrl: 0x28,
+	SetMapEnvProperty: 0x29
 }
 const PacketTypeCount = 0x12;
 
@@ -173,9 +180,18 @@ PacketData[PacketType.ChangeModel] =
 	entityID: DataType.Byte,
 	model: DataType.String
 };
-PacketData[PacketType.EnvWeatherType] =
+PacketData[PacketType.EnvSetWeatherType] =
 {
 	weather: DataType.UByte
+};
+PacketData[PacketType.SetMapEnvUrl] =
+{
+	url: DataType.DoubleString
+};
+PacketData[PacketType.SetMapEnvProperty] =
+{
+	propertyID: DataType.UByte,
+	propertyValue: DataType.Int
 };
 
 
@@ -236,6 +252,18 @@ class NetStream
 		return this.buf.readInt16BE(this.increasePosition(2)) / 32;
 	}
 
+	writeShort(s)
+	{
+		var buffer = Buffer.alloc(2);
+		buffer.writeInt16BE(s);
+		this.chunks.push(buffer);
+	}
+
+	readShort()
+	{
+		return this.buf.readInt16BE(this.increasePosition(2));
+	}
+
 	writeUShort(s)
 	{
 		var buffer = Buffer.alloc(2);
@@ -246,6 +274,18 @@ class NetStream
 	readUShort()
 	{
 		return this.buf.readUInt16BE(this.increasePosition(2));
+	}
+
+	writeInt(i)
+	{
+		var buffer = Buffer.alloc(4);
+		buffer.writeInt32BE(i);
+		this.chunks.push(buffer);
+	}
+
+	readInt()
+	{
+		return this.buf.readInt32BE(this.increasePosition(4));
 	}
 
 	writeUInt(i)
@@ -260,19 +300,19 @@ class NetStream
 		return this.buf.readUInt32BE(this.increasePosition(4));
 	}
 
-	writeString(string)
+	writeString(string, length)
 	{
-		var buffer = Buffer.alloc(64, 0x20);
+		var buffer = Buffer.alloc(length, 0x20);
 		var offs = 0;
 		for (var i = 0; i < Math.min(string.length, buffer.length); i++)
 			offs = buffer.writeUInt8(string.charCodeAt(i) & 0xFF, offs);
 		this.chunks.push(buffer);
 	}
 
-	readString(trim)
+	readString(trim, length)
 	{
 		var finalString = "";
-		for (var i = 0; i < 64; i++)
+		for (var i = 0; i < length; i++)
 			finalString += String.fromCharCode(this.buf.readInt8(this.increasePosition(1)));
 		return trim ? finalString.trimEnd() : finalString;
 	}
@@ -344,16 +384,28 @@ function deserializePacket(data, offset)
 				packet.data[key] = netStream.readUByte();
 				break;
 			
-			case DataType.UInt:
+			case DataType.Short:
 				if (netStream.checkEndOfStream(2))
 					return [PacketError.EndOfStream, packetID];
-				packet.data[key] = netStream.readUInt();
+				packet.data[key] = netStream.readShort();
 				break;
-			
+						
 			case DataType.UShort:
 				if (netStream.checkEndOfStream(2))
 					return [PacketError.EndOfStream, packetID];
 				packet.data[key] = netStream.readUShort();
+				break;
+			
+			case DataType.Int:
+				if (netStream.checkEndOfStream(4))
+					return [PacketError.EndOfStream, packetID];
+				packet.data[key] = netStream.readInt();
+				break;
+			
+			case DataType.UInt:
+				if (netStream.checkEndOfStream(4))
+					return [PacketError.EndOfStream, packetID];
+				packet.data[key] = netStream.readUInt();
 				break;
 			
 			case DataType.Fixed:
@@ -366,7 +418,14 @@ function deserializePacket(data, offset)
 			case DataType.UntrimmedString:
 				if (netStream.checkEndOfStream(64))
 					return [PacketError.EndOfStream, packetID];
-				packet.data[key] = netStream.readString(value == DataType.String);
+				packet.data[key] = netStream.readString(value == DataType.String, 64);
+				break;
+			
+			case DataType.String:
+			case DataType.UntrimmedString:
+				if (netStream.checkEndOfStream(128))
+					return [PacketError.EndOfStream, packetID];
+				packet.data[key] = netStream.readString(value == DataType.DoubleString, 128);
 				break;
 			
 			case DataType.ByteArray:
@@ -404,13 +463,21 @@ function serializePacket(packetID, data)
 			case DataType.UByte:
 				netStream.writeUByte(data[key]);
 				break;
-			
-			case DataType.UInt:
-				netStream.writeUInt(data[key]);
+
+			case DataType.Short:
+				netStream.writeShort(data[key]);
 				break;
 			
 			case DataType.UShort:
 				netStream.writeUShort(data[key]);
+				break;
+			
+			case DataType.Int:
+				netStream.writeInt(data[key]);
+				break;
+			
+			case DataType.UInt:
+				netStream.writeUInt(data[key]);
 				break;
 			
 			case DataType.Fixed:
@@ -419,7 +486,12 @@ function serializePacket(packetID, data)
 			
 			case DataType.String:
 			case DataType.UntrimmedString:
-				netStream.writeString(data[key]);
+				netStream.writeString(data[key], 64);
+				break;
+			
+			case DataType.DoubleString:
+			case DataType.DoubleUntrimmedString:
+				netStream.writeString(data[key], 128);
 				break;
 			
 			case DataType.ByteArray:

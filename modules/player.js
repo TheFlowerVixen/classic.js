@@ -370,11 +370,31 @@ class Player
 
             case '/lvl':
             case '/level':
-                var code = this.server.sendPlayerToLevel(this, args[1]);
-                if (code == 1)
-                    this.sendMessage('&cThat level does not exist!');
-                if (code == 2)
-                    this.sendMessage('&cYou are already in this level!');
+                switch (args[1])
+                {
+                    case 'goto':
+                        var code = this.server.sendPlayerToLevel(this, args[2]);
+                        if (code == 1)
+                            this.sendMessage('&cThat level does not exist!');
+                        if (code == 2)
+                            this.sendMessage('&cYou are already in this level!');
+                        break;
+                    
+                    case 'weather':
+                        var success = this.currentLevel.setWeather(parseInt(args[2]));
+                        console.log(success);
+                        break;
+                    
+                    case 'textures':
+                        var success = this.currentLevel.setTextures(args[2]);
+                        console.log(success);
+                        break;
+                    
+                    case 'property':
+                        var success = this.currentLevel.setProperty(args[2], parseFloat(args[3]));
+                        console.log(success);
+                        break;
+                }
                 break;
             
             case '/lc':
@@ -409,6 +429,14 @@ class Player
             
             case '/model':
                 this.changeModel(args[1]);
+                break;
+            
+            case '/ext':
+                console.log(this.supportedExtensions);
+                break;
+            
+            case '/reload':
+                this.currentLevel.sendLevelData(this, false);
                 break;
             
             case '/stop':

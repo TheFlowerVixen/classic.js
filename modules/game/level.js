@@ -3,6 +3,19 @@ const fs = require('fs');
 const PacketType = require('../packet.js').PacketType;
 const serializePacket = require('../packet.js').serializePacket;
 
+const LevelProperties = [
+    'sideBlockID',
+    'edgeBlockID',
+    'edgeHeight',
+    'cloudsHeight',
+    'maxFog',
+    'cloudsSpeed',
+    'weatherSpeed',
+    'weatherFade',
+    'useExpFog',
+    'sideHeight'
+];
+
 class Level
 {
     constructor(levelName, sizeX = 256, sizeY = 64, sizeZ = 256)
@@ -18,6 +31,20 @@ class Level
 
         this.players = [];
         this.blocks = new Array(this.sizeX * this.sizeY * this.sizeZ);
+        this.customTextures = "";
+        this.customWeather = 0;
+        this.customProperties = {
+            sideBlockID: 7,
+            edgeBlockID: 8,
+            edgeHeight: this.sizeY / 2,
+            cloudsHeight: this.sizeY + 2,
+            maxFog: 0,
+            cloudsSpeed: 1.0,
+            weatherSpeed: 1.0,
+            weatherFade: 1.0,
+            useExpFog: false,
+            sideHeight: -2
+        };
     }
 
     flattenCoordinate(x, y, z)
@@ -93,7 +120,7 @@ class Level
             this.blocks[i] = decompressedBlocks.readUInt8(4 + i);
     }
 
-    sendLevelData(player)
+    sendLevelData(player, sendPosition = true)
     {
         // level init
         player.sendPacket(PacketType.LevelInit);
@@ -132,9 +159,59 @@ class Level
             sizeZ: this.sizeZ
         });
 
+        // custom properties
+        if (player.supportsExtension("EnvWeatherType", 1))
+        {
+            player.sendPacket(PacketType.EnvSetWeatherType, {
+                weather: this.customWeather
+            });
+        }
+        if (player.supportsExtension("EnvMapAspect", 2))
+        {
+            if (this.customTextures != "")
+            {
+                player.sendPacket(PacketType.SetMapEnvUrl, {
+                    url: this.customTextures
+                });
+            }
+
+            for (var i in LevelProperties)
+            {
+                var property = LevelProperties[i];
+                var value = this.customProperties[property];
+                switch (property)
+                {
+                    case 'sideBlockID':
+                    case 'edgeBlockID':
+                        value = player.getPlayerSpecificBlock(value);
+                        break;
+                    
+                    case 'cloudsSpeed':
+                    case 'weatherSpeed':
+                        value = value * 256;
+                        break;
+                    
+                    case 'weatherFade':
+                        value = value * 128;
+                        break;
+                    
+                    case 'useExpFog':
+                        value = value ? 1 : 0;
+                        break;
+                }
+                player.sendPacket(PacketType.SetMapEnvProperty, {
+                    propertyID: i,
+                    propertyValue: value
+                });
+            }
+        }
+
         // sending it twice; once for initial position, once for spawn position
-        player.teleportCentered(this.spawnX, this.spawnY, this.spawnZ);
-        player.teleportCentered(this.spawnX, this.spawnY, this.spawnZ);
+        if (sendPosition)
+        {
+            player.teleportCentered(this.spawnX, this.spawnY, this.spawnZ);
+            player.teleportCentered(this.spawnX, this.spawnY, this.spawnZ);
+        }
 
         // delayed other players (doesnt work otherwise)
         setTimeout(function() {
@@ -184,6 +261,49 @@ class Level
             }
         }
     }
+
+    setWeather(weather)
+    {
+        if (weather >= 0 && weather < 3)
+        {
+            this.customWeather = weather;
+            global.server.notifyLevelWeatherChange(this, weather);
+            return true;
+        }
+        return false;
+    }
+
+    setTextures(url)
+    {
+        if (url == "none")
+        {
+            this.customTextures = "";
+            global.server.notifyLevelTexturesChange(this, "");
+            return true;
+        }
+        try
+        {
+            new URL(url);
+            this.customTextures = url;
+            global.server.notifyLevelTexturesChange(this, url);
+            return true;
+        }
+        catch (error)
+        {
+            return false;
+        }
+    }
+
+    setProperty(propertyName, propertyValue)
+    {
+        if (this.customProperties[propertyName] != undefined)
+        {
+            this.customProperties[propertyName] = propertyValue;
+            global.server.notifyLevelPropertyChange(this, propertyName, propertyValue);
+            return true;
+        }
+        return false;
+    }
 }
 
-module.exports = { Level };
+module.exports = { Level, LevelProperties };

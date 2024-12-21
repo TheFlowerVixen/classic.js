@@ -5,6 +5,7 @@ const PacketType = require('./packet.js').PacketType;
 const serializePacket = require('./packet.js').serializePacket;
 const Player = require('./player.js').Player;
 const Level = require('./game/level.js').Level;
+const LevelProperties = require('./game/level.js').LevelProperties;
 const Broadcaster = require('./broadcast.js').Broadcaster;
 
 const DefaultProperties = {
@@ -397,6 +398,56 @@ class Server
                     posZ: z,
                     blockType: 0
                 });
+            }
+        }
+    }
+
+    notifyLevelWeatherChange(level, weather)
+    {
+        for (var otherPlayer of this.players)
+        {
+            if (otherPlayer.supportsExtension("EnvWeatherType", 1) && otherPlayer.currentLevel.levelName == level.levelName)
+                otherPlayer.sendPacket(PacketType.EnvSetWeatherType, { weather: weather });
+        }
+    }
+
+    notifyLevelTexturesChange(level, textures)
+    {
+        for (var otherPlayer of this.players)
+        {
+            if (otherPlayer.supportsExtension("EnvMapAspect", 2) && otherPlayer.currentLevel.levelName == level.levelName)
+                otherPlayer.sendPacket(PacketType.SetMapEnvUrl, { url: textures });
+        }
+    }
+
+    notifyLevelPropertyChange(level, propertyName, propertyValue)
+    {
+        for (var otherPlayer of this.players)
+        {
+            if (otherPlayer.supportsExtension("EnvMapAspect", 2) && otherPlayer.currentLevel.levelName == level.levelName)
+            {
+                var value = propertyValue;
+                switch (propertyName)
+                {
+                    case 'sideBlockID':
+                    case 'edgeBlockID':
+                        value = otherPlayer.getPlayerSpecificBlock(value);
+                        break;
+                    
+                    case 'cloudsSpeed':
+                    case 'weatherSpeed':
+                        value = value * 256;
+                        break;
+                    
+                    case 'weatherFade':
+                        value = value * 128;
+                        break;
+                    
+                    case 'useExpFog':
+                        value = value ? 1 : 0;
+                        break;
+                }
+                otherPlayer.sendPacket(PacketType.SetMapEnvProperty, { propertyID: LevelProperties.indexOf(propertyName), propertyValue: value });
             }
         }
     }
