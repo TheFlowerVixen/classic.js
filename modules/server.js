@@ -16,7 +16,7 @@ const DefaultProperties = {
     mainLevel: "main",
     autosaveInterval: 10,
     allowVanillaClients: true,
-    allowWebClients: true,
+    //allowWebClients: true,
 
     broadcast: true,
     broadcastInterval: 45,

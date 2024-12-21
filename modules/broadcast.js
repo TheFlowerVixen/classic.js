@@ -46,7 +46,7 @@ class Broadcaster
                 public: this.server.properties.public,
                 salt: this.salt,
                 software: "classic.js Alpha 0",
-                web: this.server.properties.allowWebClients,
+                web: false, //this.server.properties.allowWebClients,
                 version: 7
             };
             const options = {

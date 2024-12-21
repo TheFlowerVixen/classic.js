@@ -209,7 +209,7 @@ class Player
     {
         if (data.toString('utf8').startsWith('GET'))
         {
-            console.log(data.toString('utf8'));
+            this.socket.write("Web clients aren't supported yet!");
             return;
         }
 
@@ -225,9 +225,6 @@ class Player
                 this.handlePacketError(packet);
                 return;
             }
-
-            if (!this.handlePacketViaPlugin(packet))
-                continue;
 
             switch (packet.id)
             {
@@ -261,21 +258,6 @@ class Player
             }
         }
         this.resetResponse();
-    }
-
-    handlePacketViaPlugin(packet)
-    {
-        var result = true;
-        for (var plugin of this.server.plugins)
-        {
-            if (plugin.hasPacketHandler(packet.id))
-            {
-                var pluginResult = plugin.getPacketHandler(packet.id)(this, packet.data);
-                if (!pluginResult)
-                    result = false;
-            }
-        }
-        return result;
     }
 
     handlePacketError(error)
@@ -425,6 +407,10 @@ class Player
                 this.teleportCentered(x, y, z);
                 break;
             
+            case '/model':
+                this.changeModel(args[1]);
+                break;
+            
             case '/stop':
                 this.server.shutDownServer(0);
                 break;
@@ -488,12 +474,30 @@ class Player
         this.responseTime = 0;
     }
 
+    adjustString(str)
+    {
+        if (!this.supportsExtension("FullCP437", 1))
+        {
+            var newString = "";
+            for (var i in str)
+            {
+                if (str.charCodeAt(i) > 127)
+                    newString += "?";
+                else
+                    newString += str[i];
+            }
+            return newString;
+        }
+        else
+            return str;
+    }
+
     disconnect(reason)
     {
         this.playerState == PlayerState.Disconnected;
         console.log(`Disconnecting ${this.username} with reason "${reason}"`)
         this.sendPacket(PacketType.DisconnectPlayer, {
-            reason: reason
+            reason: this.adjustString(reason)
         });
     }
 
@@ -541,7 +545,7 @@ class Player
         {
             this.sendPacket(PacketType.Message, {
                 messageType: type,
-                message: message
+                message: this.adjustString(message)
             });
         }
         else
@@ -550,7 +554,7 @@ class Player
             {
                 this.sendPacket(PacketType.Message, {
                     messageType: type,
-                    message: messagePart
+                    message: this.adjustString(messagePart)
                 });
             }
         }
@@ -603,6 +607,17 @@ class Player
             return true;
         }
         return false;
+    }
+
+    changeModel(model)
+    {
+        if (this.supportsExtension("ChangeModel", 1))
+        {
+            this.sendPacket(PacketType.ChangeModel, {
+                entityID: -1,
+                model: model
+            });
+        }
     }
 
     getPlayerSpecificBlock(blockType)

@@ -34,7 +34,7 @@ const PacketType = {
 	RemovePlayer: 0x0C,
 	Message: 0x0D,
 	DisconnectPlayer: 0x0E,
-	OpUser: 0x0F,
+	SetRank: 0x0F,
 
 	// extended protocol
 	ExtInfo: 0x10,
@@ -42,160 +42,142 @@ const PacketType = {
 	ClickDistance: 0x12,
 	CustomBlockSupportLevel: 0x13,
     HoldThis: 0x14,
+
+	ChangeModel: 0x1D,
+	EnvWeatherType: 0x1F
 }
 const PacketTypeCount = 0x12;
 
-const PacketData = [
-	// Handshake:
-	{
-		protocolVersion: DataType.UByte,
-		name: DataType.String,
-		extra: DataType.String,
-		supportByte: DataType.UByte
-	},
-	// ClientPing:
-	{},
-	// LevelInit:
-	{},
-	// LevelChunk:
-	{
-		chunkLength: DataType.UShort,
-		chunkData: DataType.ByteArray,
-		percentComplete: DataType.UByte
-	},
-	// LevelEnd:
-	{
-		sizeX: DataType.UShort,
-		sizeY: DataType.UShort,
-		sizeZ: DataType.UShort
-	},
-	// SetBlockClient:
-	{
-		posX: DataType.UShort,
-		posY: DataType.UShort,
-		posZ: DataType.UShort,
-		mode: DataType.UByte,
-		blockType: DataType.UByte
-	},
-	// SetBlockServer:
-	{
-		posX: DataType.UShort,
-		posY: DataType.UShort,
-		posZ: DataType.UShort,
-		blockType: DataType.UByte
-	},
-	// AddPlayer:
-	{
-		playerID: DataType.Byte,
-		playerName: DataType.String,
-		posX: DataType.Fixed,
-		posY: DataType.Fixed,
-		posZ: DataType.Fixed,
-		yaw: DataType.UByte,
-		pitch: DataType.UByte
-	},
-	// PlayerPosition:
-	{
-		playerID: DataType.UByte,
-		posX: DataType.Fixed,
-		posY: DataType.Fixed,
-		posZ: DataType.Fixed,
-		yaw: DataType.UByte,
-		pitch: DataType.UByte
-	},
-	// PlayerMovePosRot:
-	{
-		playerID: DataType.Byte,
-		deltaX: DataType.Byte,
-		deltaY: DataType.Byte,
-		deltaZ: DataType.Byte,
-		deltaYaw: DataType.UByte,
-		deltaPitch: DataType.UByte
-	},
-	// PlayerMovePos:
-	{
-		playerID: DataType.Byte,
-		deltaX: DataType.Byte,
-		deltaY: DataType.Byte,
-		deltaZ: DataType.Byte,
-	},
-	// PlayerMoveRot:
-	{
-		playerID: DataType.Byte,
-		deltaYaw: DataType.UByte,
-		deltaPitch: DataType.UByte
-	},
-	// RemovePlayer:
-	{
-		playerID: DataType.Byte
-	},
-	// Message:
-	{
-		messageType: DataType.Byte,
-		message: DataType.UntrimmedString
-	},
-	// DisconnectPlayer:
-	{
-		reason: DataType.String
-	},
-	// SetRank:
-	{
-		rank: DataType.UByte
-	},
-	// ExtInfo:
-	{
-		software: DataType.String,
-		extensionCount: DataType.UShort
-	},
-	// ExtEntry:
-	{
-		extName: DataType.String,
-		version: DataType.UInt
-	},
-	// ClickDistance:
-	{
-		distance: DataType.Fixed
-	},
-	// CustomBlockSupportLevel:
-	{
-		supportLevel: DataType.UByte
-	},
-	// HoldThis:
-	{
-		blockToHold: DataType.UByte,
-		preventChange: DataType.UByte
-	},
-	// SetTextHotKey:
-	{
-		label: DataType.String,
-		action: DataType.String,
-		keyCode: DataType.UInt,
-		keyMods: DataType.UByte
-	},
-	// ExtAddPlayerName:
-	{
-		nameID: DataType.UShort,
-		playerName: DataType.String,
-		listName: DataType.String,
-		groupName: DataType.String,
-		groupRank: DataType.UByte
-	},
-	// ExtAddEntity2:
-	{
-		entityID: DataType.Byte,
-		inGameName: DataType.String,
-		skinName: DataType.String,
-		spawnX: DataType.Fixed,
-		spawnY: DataType.Fixed,
-		spawnZ: DataType.Fixed,
-		spawnYaw: DataType.UByte,
-		spawnPitch: DataType.UByte
-	},
-	// ExtRemovePlayerName:
-	{
-		nameID: DataType.UShort
-	}
-]
+const PacketData = {}
+PacketData[PacketType.Handshake] =
+{
+	protocolVersion: DataType.UByte,
+	name: DataType.String,
+	extra: DataType.String,
+	supportByte: DataType.UByte
+};
+PacketData[PacketType.ClientPing] =
+{};
+PacketData[PacketType.LevelInit] =
+{};
+PacketData[PacketType.LevelChunk] =
+{
+	chunkLength: DataType.UShort,
+	chunkData: DataType.ByteArray,
+	percentComplete: DataType.UByte
+};
+PacketData[PacketType.LevelEnd] =
+{
+	sizeX: DataType.UShort,
+	sizeY: DataType.UShort,
+	sizeZ: DataType.UShort
+};
+PacketData[PacketType.SetBlockClient] =
+{
+	posX: DataType.UShort,
+	posY: DataType.UShort,
+	posZ: DataType.UShort,
+	mode: DataType.UByte,
+	blockType: DataType.UByte
+};
+PacketData[PacketType.SetBlockServer] =
+{
+	posX: DataType.UShort,
+	posY: DataType.UShort,
+	posZ: DataType.UShort,
+	blockType: DataType.UByte
+};
+PacketData[PacketType.AddPlayer] =
+{
+	playerID: DataType.Byte,
+	playerName: DataType.String,
+	posX: DataType.Fixed,
+	posY: DataType.Fixed,
+	posZ: DataType.Fixed,
+	yaw: DataType.UByte,
+	pitch: DataType.UByte
+};
+PacketData[PacketType.PlayerPosition] =
+{
+	playerID: DataType.UByte,
+	posX: DataType.Fixed,
+	posY: DataType.Fixed,
+	posZ: DataType.Fixed,
+	yaw: DataType.UByte,
+	pitch: DataType.UByte
+};
+PacketData[PacketType.PosRotUpdate] =
+{
+	playerID: DataType.Byte,
+	deltaX: DataType.Byte,
+	deltaY: DataType.Byte,
+	deltaZ: DataType.Byte,
+	deltaYaw: DataType.UByte,
+	deltaPitch: DataType.UByte
+};
+PacketData[PacketType.PosUpdate] =
+{
+	playerID: DataType.Byte,
+	deltaX: DataType.Byte,
+	deltaY: DataType.Byte,
+	deltaZ: DataType.Byte,
+};
+PacketData[PacketType.RotUpdate] =
+{
+	playerID: DataType.Byte,
+	deltaYaw: DataType.UByte,
+	deltaPitch: DataType.UByte
+};
+PacketData[PacketType.RemovePlayer] =
+{
+	playerID: DataType.Byte
+};
+PacketData[PacketType.Message] =
+{
+	messageType: DataType.Byte,
+	message: DataType.UntrimmedString
+};
+PacketData[PacketType.DisconnectPlayer] =
+{
+	reason: DataType.String
+};
+PacketData[PacketType.SetRank] =
+{
+	rank: DataType.UByte
+};
+PacketData[PacketType.ExtInfo] =
+{
+	software: DataType.String,
+	extensionCount: DataType.UShort
+};
+PacketData[PacketType.ExtEntry] =
+{
+	extName: DataType.String,
+	version: DataType.UInt
+};
+PacketData[PacketType.ClickDistance] =
+{
+	distance: DataType.Fixed
+};
+PacketData[PacketType.CustomBlockSupportLevel] =
+{
+	supportLevel: DataType.UByte
+};
+PacketData[PacketType.HoldThis] =
+{
+	blockToHold: DataType.UByte,
+	preventChange: DataType.UByte
+};
+PacketData[PacketType.ChangeModel] =
+{
+	entityID: DataType.Byte,
+	model: DataType.String
+};
+PacketData[PacketType.EnvWeatherType] =
+{
+	weather: DataType.UByte
+};
+
 
 function definePacketType(id, data)
 {
@@ -221,7 +203,7 @@ class NetStream
 	writeByte(b)
 	{
 		var buffer = Buffer.alloc(1);
-		buffer.writeInt8(b & 0xFF);
+		buffer.writeInt8(b);
 		this.chunks.push(buffer);
 	}
 
@@ -283,7 +265,7 @@ class NetStream
 		var buffer = Buffer.alloc(64, 0x20);
 		var offs = 0;
 		for (var i = 0; i < Math.min(string.length, buffer.length); i++)
-			offs = buffer.writeUInt8(string.charCodeAt(i), offs);
+			offs = buffer.writeUInt8(string.charCodeAt(i) & 0xFF, offs);
 		this.chunks.push(buffer);
 	}
 

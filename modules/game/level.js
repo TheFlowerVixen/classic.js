@@ -95,8 +95,6 @@ class Level
 
     sendLevelData(player)
     {
-        var levelPackets = [];
-
         // level init
         player.sendPacket(PacketType.LevelInit);
 
