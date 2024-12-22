@@ -1,8 +1,8 @@
 const net = require('node:net');
 const fs = require('fs');
 const crypto = require('crypto');
-const PacketType = require('./packet.js').PacketType;
-const serializePacket = require('./packet.js').serializePacket;
+const PacketType = require('./network/packet.js').PacketType;
+const serializePacket = require('./network/stream.js').serializePacket;
 const Player = require('./player.js').Player;
 const Level = require('./level.js').Level;
 const LevelProperties = require('./level.js').LevelProperties;
@@ -364,7 +364,7 @@ class Server
             {
                 var id = player.playerID;
                 if (player.playerID == otherPlayer.playerID)
-                    id = -1;
+                    id = 255;
                 otherPlayer.sendPacket(PacketType.PlayerPosition, {
                     playerID: id,
                     posX: position.posX,

@@ -1,9 +1,9 @@
 const crypto = require('crypto');
 const fs = require('fs');
-const PacketType = require('./packet.js').PacketType;
-const PacketError = require('./packet.js').PacketError;
-const serializePacket = require('./packet.js').serializePacket;
-const deserializePacket = require('./packet.js').deserializePacket;
+const PacketType = require('./network/packet.js').PacketType;
+const PacketError = require('./network/stream.js').PacketError;
+const serializePacket = require('./network/stream.js').serializePacket;
+const deserializePacket = require('./network/stream.js').deserializePacket;
 
 const PlayerState = {
     Connected: 0,

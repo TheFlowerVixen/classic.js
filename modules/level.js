@@ -1,7 +1,7 @@
 const zlib = require('node:zlib');
 const fs = require('fs');
-const PacketType = require('./packet.js').PacketType;
-const serializePacket = require('./packet.js').serializePacket;
+const PacketType = require('./network/packet.js').PacketType;
+const serializePacket = require('./network/stream.js').serializePacket;
 
 const LevelProperties = [
     'sideBlockID',
