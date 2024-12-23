@@ -51,7 +51,12 @@ const PacketType = {
     SetMapEnvProperty: 0x29,
 
     // Extension SetHotbar
-    SetHotbar: 0x2D
+    SetHotbar: 0x2D,
+
+    // Extension CMV2
+    DefineModel: 0x32,
+    DefineModelPart: 0x33,
+    UndefineModel: 0x34
 }
 const PacketTypeCount = 0x12;
 
@@ -230,5 +235,44 @@ PacketData[PacketType.SetHotbar] =
     blockID: DataType.UByte,
     index: DataType.UByte,
 };
+
+PacketData[PacketType.DefineModel] =
+{
+    modelID: DataType.UByte,
+    name: DataType.String,
+    flags: DataType.UByte,
+    nameY: DataType.Float,
+    eyeY: DataType.Float,
+    collisionSize: DataType.Vector3,
+    pickBoundsMin: DataType.Vector3,
+    pickBoundsMax: DataType.Vector3,
+    uScale: DataType.UShort,
+    vScale: DataType.UShort,
+    partCount: DataType.UByte
+};
+PacketData[PacketType.DefineModelPart] =
+{
+    modelID: DataType.UByte,
+    minCoords: DataType.Vector3,
+    maxCoords: DataType.Vector3,
+    topUV: DataType.UVCoords,
+    bottomUV: DataType.UVCoords,
+    frontUV: DataType.UVCoords,
+    backUV: DataType.UVCoords,
+    leftUV: DataType.UVCoords,
+    rightUV: DataType.UVCoords,
+    origin: DataType.Vector3,
+    angles: DataType.Vector3,
+    anim1: DataType.AnimData,
+    anim2: DataType.AnimData,
+    anim3: DataType.AnimData,
+    anim4: DataType.Vector3,
+    flags: DataType.UByte
+};
+PacketData[PacketType.UndefineModel] =
+{
+    modelID: DataType.UByte
+};
+
 
 module.exports = { PacketType, PacketData };
