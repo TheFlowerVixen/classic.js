@@ -230,6 +230,7 @@ class Server
             return 2;
         else
             player.sendToLevel(this.levels[level]);
+        this.notifyPlayerLevelChange(player, this.levels[level]);
         return 0;
     }
 
@@ -404,6 +405,37 @@ class Server
                     posZ: position.posZ,
                     yaw: position.yaw,
                     pitch: position.pitch
+                });
+            }
+        }
+    }
+
+    notifyPlayerLevelChange(player, level)
+    {
+        for (var otherPlayer of this.players)
+        {
+            if (otherPlayer.supportsExtension("ExtPlayerList", 1) && otherPlayer.currentLevel === player.currentLevel)
+            {
+                otherPlayer.sendPacket(PacketType.ExtAddPlayerName, {
+                    nameID: player.getIDFor(otherPlayer),
+                    playerName: player.username,
+                    listName: player.username,
+                    groupName: level.levelName,
+                    groupRank: 0
+                });
+            }
+        }
+    }
+
+    notifyPlayerModelChange(player, model)
+    {
+        for (var otherPlayer of this.players)
+        {
+            if (otherPlayer.supportsExtension("ChangeModel", 1) && otherPlayer.currentLevel === player.currentLevel)
+            {
+                otherPlayer.sendPacket(PacketType.ChangeModel, {
+                    entityID: player.getIDFor(otherPlayer),
+                    model: model
                 });
             }
         }

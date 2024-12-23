@@ -1,9 +1,11 @@
 // Network helper module for data packets
 
-const DataType = require('./data.js').DataType;
-const DataTypeInfo = require('./data.js').DataTypeInfo;
-const PacketType = require('./packet.js').PacketType;
 const PacketData = require('./packet.js').PacketData;
+const DataType = require('./data.js').DataType;
+const getDataTypeSize = require('./data.js').getDataTypeSize;
+const getDataTypeScaleFactor = require('./data.js').getDataTypeScaleFactor;
+const getDataTypeReadFunc = require('./data.js').getDataTypeReadFunc;
+const getDataTypeWriteFunc = require('./data.js').getDataTypeWriteFunc;
 
 const PacketError = {
 	InvalidID: 0,
@@ -29,14 +31,14 @@ class NetStream
 
 	writeData(type, data)
 	{
-		var buffer = Buffer.alloc(DataTypeInfo[type].size);
-		buffer[DataTypeInfo[type].writeFunc](data * DataTypeInfo[type].scaleFactor);
+		var buffer = Buffer.alloc(getDataTypeSize(type));
+		buffer[getDataTypeWriteFunc(type)](data * getDataTypeScaleFactor(type));
 		this.chunks.push(buffer);
 	}
 
 	readData(type)
 	{
-		return this.buf[DataTypeInfo[type].readFunc](this.increasePosition(DataTypeInfo[type].size)) / DataTypeInfo[type].scaleFactor;
+		return this.buf[getDataTypeReadFunc(type)](this.increasePosition(getDataTypeSize(type))) / getDataTypeScaleFactor(type);
 	}
 
 	writeString(string, length)
@@ -69,9 +71,9 @@ class NetStream
 		return array;
 	}
 
-	checkEndOfStream(offset)
+	checkEndOfStream(type)
 	{
-		return this.position + offset > this.buf.length;
+		return this.position + getDataTypeSize(type) > this.buf.length;
 	}
 
 	getPosition()
@@ -109,7 +111,7 @@ function deserializePacket(data, offset)
 	};
 	for (const [key, value] of Object.entries(packetType))
 	{
-		if (netStream.checkEndOfStream(DataTypeInfo[value].size))
+		if (netStream.checkEndOfStream(value))
 			return [PacketError.EndOfStream, packetID];
 
 		switch (value)
@@ -118,7 +120,10 @@ function deserializePacket(data, offset)
 			case DataType.UntrimmedString:
 			case DataType.DoubleString:
 			case DataType.DoubleUntrimmedString:
-				packet.data[key] = netStream.readString((value - DataType.String) % 2 == 0, DataTypeInfo[value].size);
+				var i = (value - DataType.String);
+				var trim = i % 2 == 0;
+				var length = Math.floor(i / 2) == 1 ? 128 : 64;
+				packet.data[key] = netStream.readString(trim, length);
 				break;
 			
 			case DataType.ByteArray:
@@ -147,7 +152,7 @@ function serializePacket(packetID, data)
 	{
 		if (data[key] == undefined)
 			console.error(`Missing ${key} from packet data!`);
-		if (value == undefined || value < 0 || value > DataTypeInfo.length)
+		if (value == undefined || value < 0)
 			console.error(`Invalid data type ${value}!`);
 
 		switch (value)
@@ -156,7 +161,9 @@ function serializePacket(packetID, data)
 			case DataType.UntrimmedString:
 			case DataType.DoubleString:
 			case DataType.DoubleUntrimmedString:
-				netStream.writeString(data[key], DataTypeInfo[value].size);
+				var i = (value - DataType.String);
+				var length = Math.floor(i / 2) == 1 ? 128 : 64;
+				netStream.writeString(data[key], length);
 				break;
 			
 			case DataType.ByteArray:

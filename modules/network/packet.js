@@ -1,6 +1,7 @@
 const DataType = require('./data.js').DataType;
 
 const PacketType = {
+    // Vanilla
     Handshake: 0x00,
     ClientPing: 0x01,
     LevelInit: 0x02,
@@ -18,23 +19,39 @@ const PacketType = {
     DisconnectPlayer: 0x0E,
     SetRank: 0x0F,
 
-    // extended protocol
+    // Extended Protocol
     ExtInfo: 0x10,
     ExtEntry: 0x11,
-    ClickDistance: 0x12,
-    CustomBlockSupportLevel: 0x13,
-    HoldThis: 0x14,
 
+    // Extension ClickDistance
+    ClickDistance: 0x12,
+
+    // Extension CustomBlocks
+    CustomBlockSupportLevel: 0x13,
+
+    // Extension ExtPlayerList
     ExtAddPlayerName: 0x16,
     ExtRemovePlayerName: 0x18,
+    ExtAddEntity2: 0x21,
+
+    // Extension ChangeModel
+    ChangeModel: 0x1D,
+
+    // Extension HeldBlock
+    HoldThis: 0x14,
+
+    // Extension HackControl
     HackControl: 0x20,
 
-    ChangeModel: 0x1D,
+    // Extension EnvWeatherType
     EnvSetWeatherType: 0x1F,
-    ExtAddEntity2: 0x21,
     
+    // Extension EnvMapAspect
     SetMapEnvUrl: 0x28,
-    SetMapEnvProperty: 0x29
+    SetMapEnvProperty: 0x29,
+
+    // Extension SetHotbar
+    SetHotbar: 0x2D
 }
 const PacketTypeCount = 0x12;
 
@@ -81,18 +98,18 @@ PacketData[PacketType.AddPlayer] =
 {
     playerID: DataType.Byte,
     playerName: DataType.String,
-    posX: DataType.Fixed,
-    posY: DataType.Fixed,
-    posZ: DataType.Fixed,
+    posX: DataType.Coordinate,
+    posY: DataType.Coordinate,
+    posZ: DataType.Coordinate,
     yaw: DataType.UByte,
     pitch: DataType.UByte
 };
 PacketData[PacketType.PlayerPosition] =
 {
     playerID: DataType.UByte,
-    posX: DataType.Fixed,
-    posY: DataType.Fixed,
-    posZ: DataType.Fixed,
+    posX: DataType.Coordinate,
+    posY: DataType.Coordinate,
+    posZ: DataType.Coordinate,
     yaw: DataType.UByte,
     pitch: DataType.UByte
 };
@@ -147,7 +164,7 @@ PacketData[PacketType.ExtEntry] =
 };
 PacketData[PacketType.ClickDistance] =
 {
-    distance: DataType.Fixed
+    distance: DataType.Coordinate
 };
 PacketData[PacketType.CustomBlockSupportLevel] =
 {
@@ -181,7 +198,7 @@ PacketData[PacketType.HackControl] =
 };
 PacketData[PacketType.ChangeModel] =
 {
-    entityID: DataType.Byte,
+    entityID: DataType.UByte,
     model: DataType.String
 };
 PacketData[PacketType.EnvSetWeatherType] =
@@ -193,9 +210,9 @@ PacketData[PacketType.ExtAddEntity2] =
     entityID: DataType.UByte,
     inGameName: DataType.String,
     skinName: DataType.String,
-    spawnX: DataType.Fixed,
-    spawnY: DataType.Fixed,
-    spawnZ: DataType.Fixed,
+    spawnX: DataType.Coordinate,
+    spawnY: DataType.Coordinate,
+    spawnZ: DataType.Coordinate,
     spawnYaw: DataType.UByte,
     spawnPitch: DataType.UByte
 };
@@ -207,6 +224,11 @@ PacketData[PacketType.SetMapEnvProperty] =
 {
     propertyID: DataType.UByte,
     propertyValue: DataType.Int
+};
+PacketData[PacketType.SetHotbar] =
+{
+    blockID: DataType.UByte,
+    index: DataType.UByte,
 };
 
 module.exports = { PacketType, PacketData };

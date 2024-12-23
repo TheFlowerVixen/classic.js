@@ -15,7 +15,8 @@ const PlayerState = {
 
 const DefaultUserData = {
     rank: 0,
-    password: ""
+    password: "",
+    model: "humanoid"
 }
 
 // Source: https://www.30secondsofcode.org/js/s/word-wrap/
@@ -110,14 +111,6 @@ class Player
         this.userData = null;
         this.currentLevel = null;
         this.localChat = false;
-        this.hacks = {
-            fly: true,
-            noclip: true,
-            speed: true,
-            spawn: true,
-            perspective: true,
-            jumpHeight: -1
-        };
 
         this.position = new PlayerPosition(0.0, 0.0, 0.0, 0.0, 0.0);
         this.lastPosition = this.position;
@@ -132,6 +125,14 @@ class Player
         this.clickDistance = 3.75;
         this.storedMessage = "";
         this.blockSupportLevel = 0;
+        this.hacks = {
+            fly: true,
+            noclip: true,
+            speed: true,
+            spawn: true,
+            perspective: true,
+            jumpHeight: -1
+        };
     }
     
     loadUserData(filePath)
@@ -193,6 +194,7 @@ class Player
         this.server.sendPlayerToLevel(this, this.server.properties.mainLevel);
         if (this.supportsExtension("HackControl"))
             this.sendPacket(PacketType.HackControl, this.hacks);
+        this.server.notifyPlayerModelChange(this, this.userData.model);
         this.server.notifyPlayerConnected(this);
     }
 
@@ -476,6 +478,11 @@ class Player
                 console.log(success);
                 break;
             
+            case '/clear':
+                for (var i = 0; i < 9; i++)
+                    this.setHotbar(0, i);
+                break;
+            
             case '/stop':
                 this.server.shutDownServer(0);
                 break;
@@ -674,14 +681,25 @@ class Player
         return false;
     }
 
+    setHotbar(block, slot)
+    {
+        if (this.supportsExtension("SetHotbar", 1))
+        {
+            this.sendPacket(PacketType.SetHotbar, {
+                blockID: block,
+                index: slot
+            });
+            return true;
+        }
+        return false;
+    }
+
     changeModel(model)
     {
         if (this.supportsExtension("ChangeModel", 1))
         {
-            this.sendPacket(PacketType.ChangeModel, {
-                entityID: 255,
-                model: model
-            });
+            this.userData.model = model;
+            this.server.notifyPlayerModelChange(this, model);
         }
     }
 
