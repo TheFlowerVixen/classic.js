@@ -110,6 +110,14 @@ class Player
         this.userData = null;
         this.currentLevel = null;
         this.localChat = false;
+        this.hacks = {
+            fly: true,
+            noclip: true,
+            speed: true,
+            spawn: true,
+            perspective: true,
+            jumpHeight: -1
+        };
 
         this.position = new PlayerPosition(0.0, 0.0, 0.0, 0.0, 0.0);
         this.lastPosition = this.position;
@@ -181,9 +189,11 @@ class Player
         console.log(`Player logged in as ${this.username} (auth key ${this.authKey}, supports CPE: ${this.supportsCPE})`);
         this.userData = this.loadUserData(`users/${this.username}.json`);
         this.playerState = PlayerState.LoggedIn;
-        this.server.notifyPlayerConnected(this);
         this.server.logInPlayer(this);
         this.server.sendPlayerToLevel(this, this.server.properties.mainLevel);
+        if (this.supportsExtension("HackControl"))
+            this.sendPacket(PacketType.HackControl, this.hacks);
+        this.server.notifyPlayerConnected(this);
     }
 
     onDisconnect()
@@ -194,8 +204,8 @@ class Player
         {
             this.userData.lastPosition = this.position;
             this.saveUserData(`users/${this.username}.json`, this.userData);
-            this.server.notifyPlayerDisconnected(this);
             this.currentLevel.removePlayer(this);
+            this.server.notifyPlayerDisconnected(this);
         }
     }
 
@@ -454,6 +464,18 @@ class Player
                 this.currentLevel.sendLevelData(this, false);
                 break;
             
+            case '/hack':
+                var value = args[1];
+                if (value == "true")
+                    value = true;
+                else if (value == "false")
+                    value = false;
+                else
+                    value = parseInt(value);
+                var success = this.setHack(args[1], value);
+                console.log(success);
+                break;
+            
             case '/stop':
                 this.server.shutDownServer(0);
                 break;
@@ -657,7 +679,7 @@ class Player
         if (this.supportsExtension("ChangeModel", 1))
         {
             this.sendPacket(PacketType.ChangeModel, {
-                entityID: -1,
+                entityID: 255,
                 model: model
             });
         }
@@ -669,6 +691,29 @@ class Player
             return FallbackBlocksLevel1[blockType - 0x32];
         else
             return blockType;
+    }
+
+    getIDFor(player)
+    {
+        if (player === this)
+            return 255;
+        return player.playerID;
+    }
+
+    setBlockPermission(block, allowed)
+    {
+
+    }
+
+    setHack(hack, value)
+    {
+        if (this.supportsExtension("HackControl", 1) && this.hacks[hack] != undefined)
+        {
+            this.hacks[hack] = value;
+            this.sendPacket(PacketType.HackControl, this.hacks);
+            return true;
+        }
+        return false;
     }
 }
 

@@ -280,6 +280,16 @@ class Server
     {
         for (var otherPlayer of this.players)
         {
+            if (otherPlayer.supportsExtension("ExtPlayerList", 2))
+            {
+                otherPlayer.sendPacket(PacketType.ExtAddPlayerName, {
+                    nameID: player.getIDFor(otherPlayer),
+                    playerName: player.username,
+                    listName: player.username,
+                    groupName: player.currentLevel.levelName,
+                    groupRank: 0
+                });
+            }
             if (otherPlayer !== player)
                 otherPlayer.sendMessage(`&e${player.username} joined the game`);
         }
@@ -290,25 +300,50 @@ class Server
         for (var otherPlayer of this.players)
         {
             if (otherPlayer !== player)
+            {
+                if (otherPlayer.supportsExtension("ExtPlayerList", 2))
+                {
+                    otherPlayer.sendPacket(PacketType.ExtRemovePlayerName, {
+                        nameID: player.getIDFor(otherPlayer)
+                    });
+                }
                 otherPlayer.sendMessage(`&e${player.username} left the game`);
+            }
         }
     }
 
     notifyPlayerAdded(player)
     {
-        var playerAdd = serializePacket(PacketType.AddPlayer, {
-            playerID: player.playerID,
-            playerName: player.username,
-            posX: player.position.posX,
-            posY: player.position.posY,
-            posZ: player.position.posZ,
-            yaw: player.position.yaw,
-            pitch: player.position.pitch
-        });
         for (var otherPlayer of this.players)
         {
-            if (otherPlayer.playerID != player.playerID && otherPlayer.currentLevel.levelName == player.currentLevel.levelName)
-                otherPlayer.sendPacketChunk(playerAdd);
+            if (otherPlayer !== player && otherPlayer.currentLevel === player.currentLevel)
+            {
+                if (otherPlayer.supportsExtension("ExtPlayerList", 2))
+                {
+                    otherPlayer.sendPacket(PacketType.ExtAddEntity2, {
+                        entityID: player.playerID,
+                        inGameName: player.username,
+                        skinName: player.username,
+                        spawnX: player.position.posX,
+                        spawnY: player.position.posY,
+                        spawnZ: player.position.posZ,
+                        spawnYaw: player.position.yaw,
+                        spawnPitch: player.position.pitch
+                    });
+                }
+                else
+                {
+                    otherPlayer.sendPacket(PacketType.AddPlayer, {
+                        playerID: player.playerID,
+                        playerName: player.username,
+                        posX: player.position.posX,
+                        posY: player.position.posY,
+                        posZ: player.position.posZ,
+                        yaw: player.position.yaw,
+                        pitch: player.position.pitch
+                    });
+                }
+            }
         }
     }
 
@@ -362,11 +397,8 @@ class Server
         {
             if (otherPlayer.currentLevel.levelName == player.currentLevel.levelName)
             {
-                var id = player.playerID;
-                if (player.playerID == otherPlayer.playerID)
-                    id = 255;
                 otherPlayer.sendPacket(PacketType.PlayerPosition, {
-                    playerID: id,
+                    playerID: player.getIDFor(otherPlayer),
                     posX: position.posX,
                     posY: position.posY,
                     posZ: position.posZ,

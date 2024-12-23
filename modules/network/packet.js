@@ -25,8 +25,13 @@ const PacketType = {
     CustomBlockSupportLevel: 0x13,
     HoldThis: 0x14,
 
+    ExtAddPlayerName: 0x16,
+    ExtRemovePlayerName: 0x18,
+    HackControl: 0x20,
+
     ChangeModel: 0x1D,
     EnvSetWeatherType: 0x1F,
+    ExtAddEntity2: 0x21,
     
     SetMapEnvUrl: 0x28,
     SetMapEnvProperty: 0x29
@@ -153,6 +158,27 @@ PacketData[PacketType.HoldThis] =
     blockToHold: DataType.UByte,
     preventChange: DataType.UByte
 };
+PacketData[PacketType.ExtAddPlayerName] =
+{
+    nameID: DataType.UShort,
+    playerName: DataType.String,
+    listName: DataType.String,
+    groupName: DataType.String,
+    groupRank: DataType.UByte
+};
+PacketData[PacketType.ExtRemovePlayerName] =
+{
+    nameID: DataType.UShort
+};
+PacketData[PacketType.HackControl] =
+{
+    fly: DataType.UByte,
+    noclip: DataType.UByte,
+    speed: DataType.UByte,
+    spawn: DataType.UByte,
+    perspective: DataType.UByte,
+    jumpHeight: DataType.Short
+};
 PacketData[PacketType.ChangeModel] =
 {
     entityID: DataType.Byte,
@@ -161,6 +187,17 @@ PacketData[PacketType.ChangeModel] =
 PacketData[PacketType.EnvSetWeatherType] =
 {
     weather: DataType.UByte
+};
+PacketData[PacketType.ExtAddEntity2] =
+{
+    entityID: DataType.UByte,
+    inGameName: DataType.String,
+    skinName: DataType.String,
+    spawnX: DataType.Fixed,
+    spawnY: DataType.Fixed,
+    spawnZ: DataType.Fixed,
+    spawnYaw: DataType.UByte,
+    spawnPitch: DataType.UByte
 };
 PacketData[PacketType.SetMapEnvUrl] =
 {
