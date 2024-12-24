@@ -1,6 +1,7 @@
 const net = require('node:net');
 const fs = require('fs');
 const crypto = require('crypto');
+const WebConsole = require('./webconsole.js').WebConsole;
 const PacketType = require('./network/packet.js').PacketType;
 const serializePacket = require('./network/stream.js').serializePacket;
 const Player = require('./player.js').Player;
@@ -42,6 +43,7 @@ class Server
         this.plugins = [];
         this.supportedExtensions = [];
         this.broadcaster = new Broadcaster(this);
+        this.webConsole = new WebConsole();
 
         this.heartbeatInterval = null;
         this.updateInterval = null;
@@ -109,6 +111,7 @@ class Server
         this.autosaveInterval = setInterval(this.autosave.bind(this), this.properties.autosaveInterval * 20 * 50);
         if (this.properties.broadcast)
             this.broadcaster.startBroadcasting();
+        this.webConsole.openConsole();
     }
 
     onServerReady()
