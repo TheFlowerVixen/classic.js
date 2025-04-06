@@ -597,12 +597,16 @@ class Player
         }
         else
         {
+            var lastColorCode = "";
             for (var messagePart of message.replace(wordWrap, '$1\n').split('\n'))
             {
                 this.sendPacket(PacketType.Message, {
                     messageType: type,
-                    message: this.adjustString(messagePart)
+                    message: this.adjustString(lastColorCode + messagePart)
                 });
+                var codeIndex = messagePart.lastIndexOf("&");
+                if (codeIndex > -1 && codeIndex < messagePart.length)
+                    lastColorCode = messagePart.substring(codeIndex, codeIndex + 2);
             }
         }
     }

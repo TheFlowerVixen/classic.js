@@ -289,7 +289,7 @@ class Server
     {
         var entityIndex = this.entities.indexOf(entity);
         if (entityIndex > -1)
-            this.entities.splice(entityIndex);
+            this.entities.splice(entityIndex, 1);
     }
 
     createLevel(name, sizeX, sizeY, sizeZ)
@@ -363,7 +363,7 @@ class Server
     notifyPlayerMessage(player, message, messageType)
     {
         this.notify((otherPlayer) => {
-            if (otherPlayer.currentLevel === player.currentLevel)
+            if (player.localChat && otherPlayer.currentLevel === player.currentLevel)
                 otherPlayer.sendMessage(`(LOCAL) <${player.username}> ${message}`);
             else
                 otherPlayer.sendMessage(`<${player.username}> ${message}`);

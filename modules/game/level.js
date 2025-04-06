@@ -89,10 +89,8 @@ class Level
     {
         var entityIndex = this.entities.indexOf(entity);
         if (entityIndex > -1)
-            this.entities.splice(entityIndex);
+            this.entities.splice(entityIndex, 1);
         global.server.notifyEntityRemoved(entity);
-        console.log(`Remove entity ${entity.name}`);
-        console.trace();
     }
 
     loadLevel()
