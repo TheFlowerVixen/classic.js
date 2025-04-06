@@ -1,7 +1,7 @@
 const zlib = require('node:zlib');
 const fs = require('fs');
-const PacketType = require('./network/packet.js').PacketType;
-const serializePacket = require('./network/stream.js').serializePacket;
+const PacketType = require('../network/packet.js').PacketType;
+const serializePacket = require('../network/stream.js').serializePacket;
 
 const LevelProperties = [
     'sideBlockID',
@@ -29,7 +29,7 @@ class Level
         this.spawnY = this.sizeY / 2;
         this.spawnZ = this.sizeZ / 2;
 
-        this.players = [];
+        this.entities = [];
         this.blocks = new Array(this.sizeX * this.sizeY * this.sizeZ);
         this.customTextures = "";
         this.customWeather = 0;
@@ -47,6 +47,23 @@ class Level
         };
     }
 
+    update()
+    {
+        // local update
+    }
+
+    networkUpdate(player)
+    {
+        if (global.server.ticksRan % 2 == 0)
+        {
+            for (var entity of this.entities)
+            {
+                if (entity != player.entity)
+                    entity.sendEntityPosition(player);
+            }
+        }
+    }
+
     flattenCoordinate(x, y, z)
     {
         return (this.sizeZ * this.sizeX) * y + this.sizeX * z + x;
@@ -62,18 +79,20 @@ class Level
         return this.blocks[this.flattenCoordinate(x, y, z)];
     }
 
-    addPlayer(player)
+    addEntity(entity)
     {
-        this.players.push(player);
-        global.server.notifyPlayerAdded(player);
+        this.entities.push(entity);
+        global.server.notifyEntityAdded(entity);
     }
 
-    removePlayer(player)
+    removeEntity(entity)
     {
-        var playerIndex = this.players.indexOf(player);
-        if (playerIndex > -1)
-            this.players.splice(playerIndex);
-        global.server.notifyPlayerRemoved(player);
+        var entityIndex = this.entities.indexOf(entity);
+        if (entityIndex > -1)
+            this.entities.splice(entityIndex);
+        global.server.notifyEntityRemoved(entity);
+        console.log(`Remove entity ${entity.name}`);
+        console.trace();
     }
 
     loadLevel()
@@ -210,27 +229,14 @@ class Level
         // sending it twice; once for initial position, once for spawn position
         if (sendPosition)
         {
-            player.teleportCentered(this.spawnX, this.spawnY, this.spawnZ);
-            player.teleportCentered(this.spawnX, this.spawnY, this.spawnZ);
+            player.entity.teleportCentered(this.spawnX, this.spawnY, this.spawnZ);
+            player.entity.teleportCentered(this.spawnX, this.spawnY, this.spawnZ);
         }
 
         // delayed other players (doesnt work otherwise)
         setTimeout(function() {
-            for (var otherPlayer of this.players)
-            {
-                if (otherPlayer.playerID != player.playerID && otherPlayer.isLoggedIn() && otherPlayer.currentLevel.levelName == player.currentLevel.levelName)
-                {
-                    player.sendPacket(PacketType.AddPlayer, {
-                        playerID: otherPlayer.playerID,
-                        playerName: otherPlayer.username,
-                        posX: otherPlayer.position.posX,
-                        posY: otherPlayer.position.posY,
-                        posZ: otherPlayer.position.posZ,
-                        yaw: otherPlayer.position.yaw,
-                        pitch: otherPlayer.position.pitch
-                    });
-                }
-            }
+            for (var entity of this.entities)
+                entity.sendEntityAdded(player);
         }.bind(this), 50);
     }
 

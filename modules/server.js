@@ -4,10 +4,11 @@ const crypto = require('crypto');
 const PacketType = require('./network/packet.js').PacketType;
 const serializePacket = require('./network/stream.js').serializePacket;
 const Player = require('./player.js').Player;
-const Level = require('./level.js').Level;
-const LevelProperties = require('./level.js').LevelProperties;
+const Level = require('./game/level.js').Level;
+const LevelProperties = require('./game/level.js').LevelProperties;
 const Broadcaster = require('./broadcast.js').Broadcaster;
-const FlatLevelGenerator = require('./generator/flat.js').FlatLevelGenerator;
+const FlatLevelGenerator = require('./game/generator/flat.js').FlatLevelGenerator;
+const Entity = require('./game/entity.js').Entity;
 
 const DefaultProperties = {
     serverName: "classic.js Server",
@@ -29,6 +30,12 @@ const DefaultProperties = {
     listName: "classic.js Server",
 }
 
+const NotifyFlags = {
+    None: 0,
+    LocalOnly: 1,
+    NotMe: 2
+};
+
 class Server
 {
     constructor()
@@ -38,6 +45,7 @@ class Server
         this.properties = this.loadProperties('properties.json');
         this.serverKey = this.loadServerKey('SERVER_KEY');
         this.players = [];
+        this.entities = [];
         this.levels = this.loadLevels('levels');
         this.plugins = [];
         this.supportedExtensions = [];
@@ -177,10 +185,7 @@ class Server
             }
             else
             {
-                if (this.ticksRan % 2 == 0)
-                {
-                    this.notifyPlayerPosition(player);
-                }
+                player.networkUpdate();
             }
         }
     }
@@ -203,7 +208,7 @@ class Server
             extra: this.properties.motd,
             supportByte: 0x0
         });
-        player.assignPlayerID(this.players.length);
+        player.assignEntity(this.createEntity(player.username));
         this.players.push(player);
     }
 
@@ -230,7 +235,6 @@ class Server
             return 2;
         else
             player.sendToLevel(this.levels[level]);
-        this.notifyPlayerLevelChange(player, this.levels[level]);
         return 0;
     }
 
@@ -266,6 +270,28 @@ class Server
         return null;
     }
 
+    createEntity(name)
+    {
+        var id = 0;
+        for (var entity of this.entities)
+        {
+            if (entity.entityID == id)
+                id++;
+            else
+                break;
+        }
+        var entity = new Entity(id, name);
+        this.entities.push(entity);
+        return entity;
+    }
+
+    removeEntity(entity)
+    {
+        var entityIndex = this.entities.indexOf(entity);
+        if (entityIndex > -1)
+            this.entities.splice(entityIndex);
+    }
+
     createLevel(name, sizeX, sizeY, sizeZ)
     {
         if (this.levels[name] != undefined)
@@ -277,229 +303,163 @@ class Server
         return true;
     }
 
-    notifyPlayerConnected(player)
+    notify(func)
     {
         for (var otherPlayer of this.players)
         {
-            if (otherPlayer.supportsExtension("ExtPlayerList", 2))
-            {
-                otherPlayer.sendPacket(PacketType.ExtAddPlayerName, {
-                    nameID: player.getIDFor(otherPlayer),
-                    playerName: player.username,
-                    listName: player.username,
-                    groupName: player.currentLevel.levelName,
-                    groupRank: 0
-                });
-            }
-            if (otherPlayer !== player)
-                otherPlayer.sendMessage(`&e${player.username} joined the game`);
+            if (otherPlayer.isLoggedIn())
+                func(otherPlayer);
         }
+    }
+
+    notifyLocal(level, func)
+    {
+        for (var otherPlayer of this.players)
+        {
+            if (otherPlayer.isLoggedIn() && otherPlayer.currentLevel === level)
+                func(otherPlayer);
+        }
+    }
+
+    notifyOthers(player, func)
+    {
+        for (var otherPlayer of this.players)
+        {
+            if (otherPlayer.isLoggedIn() && otherPlayer !== player)
+                func(otherPlayer);
+        }
+    }
+
+    notifyOthersLocal(player, level, func)
+    {
+        for (var otherPlayer of this.players)
+        {
+            if (otherPlayer.isLoggedIn() && otherPlayer.currentLevel == level && otherPlayer !== player)
+                func(otherPlayer);
+        }
+    }
+
+    notifyPlayerConnected(player)
+    {
+        this.notifyOthers(player, (otherPlayer) => {
+            otherPlayer.sendMessage(`&e${player.username} joined the game`);
+        });
     }
 
     notifyPlayerDisconnected(player)
     {
-        for (var otherPlayer of this.players)
-        {
-            if (otherPlayer !== player)
-            {
-                if (otherPlayer.supportsExtension("ExtPlayerList", 2))
-                {
-                    otherPlayer.sendPacket(PacketType.ExtRemovePlayerName, {
-                        nameID: player.getIDFor(otherPlayer)
-                    });
-                }
-                otherPlayer.sendMessage(`&e${player.username} left the game`);
-            }
-        }
-    }
-
-    notifyPlayerAdded(player)
-    {
-        for (var otherPlayer of this.players)
-        {
-            if (otherPlayer !== player && otherPlayer.currentLevel === player.currentLevel)
-            {
-                if (otherPlayer.supportsExtension("ExtPlayerList", 2))
-                {
-                    otherPlayer.sendPacket(PacketType.ExtAddEntity2, {
-                        entityID: player.playerID,
-                        inGameName: player.username,
-                        skinName: player.username,
-                        spawnX: player.position.posX,
-                        spawnY: player.position.posY,
-                        spawnZ: player.position.posZ,
-                        spawnYaw: player.position.yaw,
-                        spawnPitch: player.position.pitch
-                    });
-                }
-                else
-                {
-                    otherPlayer.sendPacket(PacketType.AddPlayer, {
-                        playerID: player.playerID,
-                        playerName: player.username,
-                        posX: player.position.posX,
-                        posY: player.position.posY,
-                        posZ: player.position.posZ,
-                        yaw: player.position.yaw,
-                        pitch: player.position.pitch
-                    });
-                }
-            }
-        }
-    }
-
-    notifyPlayerRemoved(player)
-    {
-        var playerRemove = serializePacket(PacketType.RemovePlayer, {
-            playerID: player.playerID
+        this.notifyOthers(player, (otherPlayer) => {
+            otherPlayer.sendMessage(`&e${player.username} left the game`);
         });
-        for (var otherPlayer of this.players)
-        {
-            if (otherPlayer.playerID != player.playerID && otherPlayer.currentLevel.levelName == player.currentLevel.levelName)
-                otherPlayer.sendPacketChunk(playerRemove);
-        }
+    }
+    
+    notifyPlayerChangeLevel(player)
+    {
+        this.notifyOthers(player, (otherPlayer) => {
+            player.sendPlayerListAdded(otherPlayer);
+        });
     }
 
     notifyPlayerMessage(player, message, messageType)
     {
-        for (var otherPlayer of this.players)
-        {
-            if (player.localChat && otherPlayer.currentLevel.levelName == player.currentLevel.levelName)
+        this.notify((otherPlayer) => {
+            if (otherPlayer.currentLevel === player.currentLevel)
                 otherPlayer.sendMessage(`(LOCAL) <${player.username}> ${message}`);
             else
                 otherPlayer.sendMessage(`<${player.username}> ${message}`);
-        }
-    }
-
-    notifyPlayerPosition(player)
-    {
-        if (player.position.posRotEquals(player.lastPosition))
-            return;
-
-        var movePacket = serializePacket(PacketType.PlayerPosition, {
-            playerID: player.playerID,
-            posX: player.position.posX,
-            posY: player.position.posY,
-            posZ: player.position.posZ,
-            yaw: player.position.yaw,
-            pitch: player.position.pitch
         });
-
-        for (var otherPlayer of this.players)
-        {
-            if (otherPlayer.playerID != player.playerID && otherPlayer.currentLevel.levelName == player.currentLevel.levelName)
-                otherPlayer.sendPacketChunk(movePacket);
-        }
     }
 
-    notifyPlayerTeleport(player, position)
+    notifyEntityAdded(entity)
     {
-        for (var otherPlayer of this.players)
-        {
-            if (otherPlayer.currentLevel.levelName == player.currentLevel.levelName)
-            {
-                otherPlayer.sendPacket(PacketType.PlayerPosition, {
-                    playerID: player.getIDFor(otherPlayer),
-                    posX: position.posX,
-                    posY: position.posY,
-                    posZ: position.posZ,
-                    yaw: position.yaw,
-                    pitch: position.pitch
-                });
-            }
-        }
+        this.notifyOthersLocal(entity.player, entity.level, (otherPlayer) => {
+            entity.sendEntityAdded(otherPlayer);
+        });
     }
 
-    notifyPlayerLevelChange(player, level)
+    notifyEntityRemoved(entity)
     {
-        for (var otherPlayer of this.players)
-        {
-            if (otherPlayer.supportsExtension("ExtPlayerList", 1) && otherPlayer.currentLevel === player.currentLevel)
-            {
-                otherPlayer.sendPacket(PacketType.ExtAddPlayerName, {
-                    nameID: player.getIDFor(otherPlayer),
-                    playerName: player.username,
-                    listName: player.username,
-                    groupName: level.levelName,
-                    groupRank: 0
-                });
-            }
-        }
+        this.notifyOthersLocal(entity.player, entity.level, (otherPlayer) => {
+            entity.sendEntityRemoved(otherPlayer);
+        });
     }
 
-    notifyPlayerModelChange(player, model)
+    notifyEntityPosition(entity)
     {
-        for (var otherPlayer of this.players)
-        {
-            if (otherPlayer.supportsExtension("ChangeModel", 1) && otherPlayer.currentLevel === player.currentLevel)
+        this.notifyOthersLocal(entity.player, entity.level, (otherPlayer) => {
+            if (entity.position.posRotEquals(entity.lastPosition))
+                return;
+            entity.sendEntityPosition(otherPlayer);
+        });
+    }
+
+    notifyEntityTeleport(entity)
+    {
+        this.notifyLocal(entity.level, (otherPlayer) => {
+            entity.sendEntityPosition(otherPlayer);
+        });
+    }
+
+    notifyEntityModelChange(entity, model)
+    {
+        this.notifyLocal(entity.level, (otherPlayer) => {
+            if (otherPlayer.supportsExtension("ChangeModel", 1))
             {
                 otherPlayer.sendPacket(PacketType.ChangeModel, {
-                    entityID: player.getIDFor(otherPlayer),
+                    entityID: entity.getIDFor(otherPlayer),
                     model: model
                 });
             }
-        }
+        });
     }
 
     notifyBlockPlaced(player, x, y, z, type)
     {
-        for (var otherPlayer of this.players)
-        {
-            if (otherPlayer.currentLevel.levelName == player.currentLevel.levelName)
-            {
-                otherPlayer.sendPacket(PacketType.SetBlockServer, {
-                    posX: x,
-                    posY: y,
-                    posZ: z,
-                    blockType: otherPlayer.getPlayerSpecificBlock(type)
-                });
-            }
-        }
+        this.notifyLocal(player.currentLevel, (otherPlayer) => {
+            otherPlayer.sendPacket(PacketType.SetBlockServer, {
+                posX: x,
+                posY: y,
+                posZ: z,
+                blockType: otherPlayer.getPlayerSpecificBlock(type)
+            });
+        });
     }
 
     notifyBlockRemoved(player, x, y, z, type)
     {
-        for (var otherPlayer of this.players)
-        {
-            if (otherPlayer.currentLevel.levelName == player.currentLevel.levelName)
-            {
-                otherPlayer.sendPacket(PacketType.SetBlockServer, {
-                    posX: x,
-                    posY: y,
-                    posZ: z,
-                    blockType: 0
-                });
-            }
-        }
+        this.notifyLocal(player.currentLevel, (otherPlayer) => {
+            otherPlayer.sendPacket(PacketType.SetBlockServer, {
+                posX: x,
+                posY: y,
+                posZ: z,
+                blockType: 0
+            });
+        });
     }
 
     notifyLevelWeatherChange(level, weather)
     {
-        for (var otherPlayer of this.players)
-        {
-            if (otherPlayer.supportsExtension("EnvWeatherType", 1) && otherPlayer.currentLevel.levelName == level.levelName)
+        this.notifyLocal(level, (otherPlayer) => {
+            if (otherPlayer.supportsExtension("EnvWeatherType", 1))
                 otherPlayer.sendPacket(PacketType.EnvSetWeatherType, { weather: weather });
-        }
+        });
     }
 
     notifyLevelTexturesChange(level, textures)
     {
-        for (var otherPlayer of this.players)
-        {
-            if (otherPlayer.supportsExtension("EnvMapAspect", 2) && otherPlayer.currentLevel.levelName == level.levelName)
+        this.notifyLocal(level, (otherPlayer) => {
+            if (otherPlayer.supportsExtension("EnvMapAspect", 2))
                 otherPlayer.sendPacket(PacketType.SetMapEnvUrl, { url: textures });
-        }
+        });
     }
 
     notifyLevelPropertyChange(level, propertyName, propertyValue)
     {
-        for (var otherPlayer of this.players)
-        {
-            if (otherPlayer.supportsExtension("EnvMapAspect", 2) && otherPlayer.currentLevel.levelName == level.levelName)
+        this.notifyLocal(level, (otherPlayer) => {
+            if (otherPlayer.supportsExtension("EnvMapAspect", 2))
             {
                 var value = propertyValue;
-                switch (propertyName)
-                {
+                switch (propertyName) {
                     case 'sideBlockID':
                     case 'edgeBlockID':
                         value = otherPlayer.getPlayerSpecificBlock(value);
@@ -520,7 +480,7 @@ class Server
                 }
                 otherPlayer.sendPacket(PacketType.SetMapEnvProperty, { propertyID: LevelProperties.indexOf(propertyName), propertyValue: value });
             }
-        }
+        });
     }
 }
 

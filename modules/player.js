@@ -41,58 +41,6 @@ const FallbackBlocksLevel1 = [
     0x01
 ]
 
-class PlayerPosition
-{
-    constructor(posX, posY, posZ, pitch, yaw)
-    {
-        this.posX = posX;
-        this.posY = posY;
-        this.posZ = posZ;
-        this.pitch = pitch;
-        this.yaw = yaw;
-    }
-    
-    positionEquals(otherPos)
-    {
-        return this.posX == otherPos.posX && this.posY == otherPos.posY && this.posZ == otherPos.posZ;
-    }
-
-    rotationEquals(otherPos)
-    {
-        return this.pitch == otherPos.pitch && this.yaw == otherPos.yaw;
-    }
-
-    posRotEquals(otherPos)
-    {
-        return this.positionEquals(otherPos) && this.rotationEquals(otherPos);
-    }
-
-    posXDifference(otherPos)
-    {
-        return otherPos.posX - this.posX;
-    }
-
-    posYDifference(otherPos)
-    {
-        return otherPos.posY - this.posY;
-    }
-
-    posZDifference(otherPos)
-    {
-        return otherPos.posZ - this.posZ;
-    }
-
-    pitchDifference(otherPos)
-    {
-        return otherPos.pitch - this.pitch;
-    }
-
-    yawDifference(otherPos)
-    {
-        return otherPos.yaw - this.yaw;
-    }
-}
-
 class Player
 {
     constructor(server, socket)
@@ -108,12 +56,10 @@ class Player
         this.playerID = -1;
         this.username = "";
         this.authKey = "";
+        this.entity = null;
         this.userData = null;
         this.currentLevel = null;
         this.localChat = false;
-
-        this.position = new PlayerPosition(0.0, 0.0, 0.0, 0.0, 0.0);
-        this.lastPosition = this.position;
 
         this.responseTime = 0;
         this.packetsSent = 0;
@@ -179,9 +125,11 @@ class Player
         }
     }
 
-    assignPlayerID(playerID)
+    assignEntity(entity)
     {
-        this.playerID = playerID;
+        this.entity = entity;
+        if (this.entity.player == null)
+            this.entity.player = this;
     }
 
     onLogin()
@@ -194,27 +142,27 @@ class Player
         this.server.sendPlayerToLevel(this, this.server.properties.mainLevel);
         if (this.supportsExtension("HackControl"))
             this.sendPacket(PacketType.HackControl, this.hacks);
-        this.server.notifyPlayerModelChange(this, this.userData.model);
         this.server.notifyPlayerConnected(this);
     }
 
     onDisconnect()
     {
-        console.log(`Player disconnected`);
-        this.playerState == PlayerState.Disconnected;
+        console.log(`Player ${this.username} disconnected`);
         if (this.isLoggedIn())
         {
-            this.userData.lastPosition = this.position;
+            this.userData.lastPosition = this.entity.position;
             this.saveUserData(`users/${this.username}.json`, this.userData);
-            this.currentLevel.removePlayer(this);
+            this.currentLevel.removeEntity(this.entity);
+            this.server.removeEntity(this.entity);
             this.server.notifyPlayerDisconnected(this);
         }
+        this.playerState = PlayerState.Disconnected;
     }
 
-    updatePositionAndRotation(x, y, z, pitch, yaw)
+    networkUpdate()
     {
-        this.lastPosition = this.position;
-        this.position = new PlayerPosition(x, y, z, pitch, yaw);
+        if (this.currentLevel != null)
+            this.currentLevel.networkUpdate(this);
     }
 
     handleData(data)
@@ -346,7 +294,8 @@ class Player
 
     handlePosition(data)
     {
-        this.updatePositionAndRotation(data.posX, data.posY, data.posZ, data.pitch, data.yaw);
+        if (this.entity != null)
+            this.entity.updatePositionAndRotation(data.posX, data.posY, data.posZ, data.pitch, data.yaw);
     }
 
     handleMessage(data)
@@ -377,7 +326,7 @@ class Player
         {
             case '/pos':
             case '/position':
-                this.sendMessage(`&ePosition: &cX &e${this.position.posX}, &aY &e${this.position.posY}, &9Z &e${this.position.posZ}`)
+                this.sendMessage(`&ePosition: &cX &e${this.entity.position.posX}, &aY &e${this.entity.position.posY}, &9Z &e${this.entity.position.posZ}`)
                 break;
 
             case '/lvl':
@@ -451,11 +400,11 @@ class Player
                 var x = parseInt(args[1]);
                 var y = parseInt(args[2]);
                 var z = parseInt(args[3]);
-                this.teleportCentered(x, y, z);
+                this.entity.teleportCentered(x, y, z);
                 break;
             
             case '/model':
-                this.changeModel(args[1]);
+                this.entity.changeModel(args[1]);
                 break;
             
             case '/ext':
@@ -485,6 +434,24 @@ class Player
             
             case '/stop':
                 this.server.shutDownServer(0);
+                break;
+            
+            case '/elist':
+                this.debugSendEListMessage(this.currentLevel.entities, "level");
+                this.debugSendEListMessage(this.server.entities, "server");
+                break;
+            
+            case '/summon':
+                if (args.length > 1)
+                {
+                    var entity = this.server.createEntity(args[1]);
+                    var pos = this.entity.position;
+                    entity.joinLevel(this.currentLevel);
+                    entity.updatePositionAndRotation(pos.posX, pos.posY, pos.posZ, pos.pitch, pos.yaw);
+                    if (args.length > 2)
+                        entity.changeModel(args[2]);
+                    this.sendMessage(`Summoned ${args[1]}`);
+                }
                 break;
         }
     }
@@ -596,7 +563,15 @@ class Player
 
     sendPacket(id, data = {})
     {
-        this.sendPacketChunk(serializePacket(id, data));
+        var packet = serializePacket(id, data);
+        if (Array.isArray(packet))
+        {
+            console.error(`Error serializing packet id ${packet[1]}: ${packet[0]}`);
+            console.log(data);
+            console.trace();
+            return;
+        }
+        this.sendPacketChunk(packet);
     }
 
     sendToLevel(level)
@@ -604,10 +579,10 @@ class Player
         if (this.isLoggedIn())
         {
             if (this.currentLevel != null)
-                this.currentLevel.removePlayer(this);
+                this.currentLevel.removeEntity(this.entity);
             this.currentLevel = level;
-            level.addPlayer(this);
-            level.sendLevelData(this);
+            this.entity.joinLevel(level);
+            this.server.notifyPlayerChangeLevel(this);
         }
     }
 
@@ -630,17 +605,6 @@ class Player
                 });
             }
         }
-    }
-
-    teleport(x, y, z)
-    {
-        this.server.notifyPlayerTeleport(this, this.position);
-        this.updatePositionAndRotation(x, y, z, 0, 0);
-    }
-
-    teleportCentered(x, y, z)
-    {
-        this.teleport(x + 0.5, y + 1.59375, z + 0.5);
     }
 
     supportsExtension(name, version)
@@ -694,28 +658,12 @@ class Player
         return false;
     }
 
-    changeModel(model)
-    {
-        if (this.supportsExtension("ChangeModel", 1))
-        {
-            this.userData.model = model;
-            this.server.notifyPlayerModelChange(this, model);
-        }
-    }
-
     getPlayerSpecificBlock(blockType)
     {
         if (blockType > 0x31 && this.blockSupportLevel < 1)
             return FallbackBlocksLevel1[blockType - 0x32];
         else
             return blockType;
-    }
-
-    getIDFor(player)
-    {
-        if (player === this)
-            return 255;
-        return player.playerID;
     }
 
     setBlockPermission(block, allowed)
@@ -732,6 +680,35 @@ class Player
             return true;
         }
         return false;
+    }
+
+    sendPlayerListAdded(otherPlayer)
+    {
+        if (otherPlayer.supportsExtension("ExtPlayerList", 1) && otherPlayer.currentLevel === entity.currentLevel)
+        {
+            otherPlayer.sendPacket(PacketType.ExtAddPlayerName, {
+                nameID: this.entity.getIDFor(otherPlayer),
+                playerName: this.entity.name,
+                listName: this.entity.name,
+                groupName: this.currentLevel.levelName,
+                groupRank: 0
+            });
+        }
+    }
+
+    sendPlayerListRemoved(otherPlayer)
+    {
+        otherPlayer.sendPacket(PacketType.ExtRemovePlayerName, {
+            nameID: this.entity.getIDFor(otherPlayer)
+        });
+    }
+
+    debugSendEListMessage(list, type)
+    {
+        var msg = `&eEntities in ${type}: `;
+        for (var entity of list)
+            msg += `${entity.name} (${entity.entityID}) `;
+        this.sendMessage(msg);
     }
 }
 

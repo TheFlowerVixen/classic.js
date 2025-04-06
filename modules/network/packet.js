@@ -101,7 +101,7 @@ PacketData[PacketType.SetBlockServer] =
 };
 PacketData[PacketType.AddPlayer] =
 {
-    playerID: DataType.Byte,
+    playerID: DataType.UByte,
     playerName: DataType.String,
     posX: DataType.Coordinate,
     posY: DataType.Coordinate,
