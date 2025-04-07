@@ -1,8 +1,13 @@
 class LevelGenerator
 {
-    constructor()
+    constructor(seed)
     {
+        this.seed = seed;
+    }
 
+    preGenerate(level)
+    {
+        
     }
 
     getBlock(x, y, z)

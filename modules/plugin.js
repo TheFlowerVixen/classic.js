@@ -7,7 +7,12 @@ class Plugin
         this.eventHandlers = {};
     }
 
-    onInit(server)
+    onLoad(server)
+    {
+
+    }
+
+    onUnload(server)
     {
 
     }

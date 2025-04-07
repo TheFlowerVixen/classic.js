@@ -9,6 +9,7 @@ const LevelProperties = require('./game/level.js').LevelProperties;
 const Broadcaster = require('./broadcast.js').Broadcaster;
 const FlatLevelGenerator = require('./game/generator/flat.js').FlatLevelGenerator;
 const Entity = require('./game/entity.js').Entity;
+const EventEmitter = require('events').EventEmitter;
 
 const DefaultProperties = {
     serverName: "classic.js Server",
@@ -36,10 +37,11 @@ const NotifyFlags = {
     NotMe: 2
 };
 
-class Server
+class Server extends EventEmitter
 {
     constructor()
     {
+        super();
         this.netServer = null;
         
         this.properties = this.loadProperties('properties.json');
@@ -47,7 +49,7 @@ class Server
         this.players = [];
         this.entities = [];
         this.levels = this.loadLevels('levels');
-        this.plugins = [];
+        this.plugins = this.loadPlugins('plugins');
         this.supportedExtensions = [];
         this.broadcaster = new Broadcaster(this);
 
@@ -99,6 +101,35 @@ class Server
         if (levels[this.properties.mainLevel] == undefined)
             this.createLevel(this.properties.mainLevel, 256, 64, 256);
         return levels;
+    }
+
+    loadPlugins(dirPath)
+    {
+        if (!fs.existsSync(dirPath))
+            fs.mkdirSync(dirPath);
+        var dir = fs.readdirSync(dirPath);
+        var plugins = [];
+        for (var fileName of dir)
+        {
+            const PluginClass = require(`../${dirPath}/${fileName}`);
+            var plugin = new PluginClass();
+            plugin.onLoad(this);
+            console.log(`${plugin.name} load`);
+        }
+        return plugins;
+    }
+
+    unloadPlugins()
+    {
+        for (var plugin of this.plugins)
+            plugin.onUnload(this);
+        this.plugins = [];
+    }
+
+    reload()
+    {
+        this.unloadPlugins();
+        this.plugins = this.loadPlugins('plugins');
     }
 
     getCipherKeys()
@@ -246,6 +277,7 @@ class Server
             level.saveLevel();
         for (var player of server.players)
             player.disconnect('Server shutting down');
+        server.unloadPlugins();
         server.netServer.close();
         process.exit(exitCode);
     }
@@ -289,7 +321,11 @@ class Server
     {
         var entityIndex = this.entities.indexOf(entity);
         if (entityIndex > -1)
+        {
+            if (entity.level != null)
+                entity.level.removeEntity(entity);
             this.entities.splice(entityIndex, 1);
+        }
     }
 
     createLevel(name, sizeX, sizeY, sizeZ)
@@ -301,6 +337,12 @@ class Server
         this.levels[name] = level;
         level.saveLevel();
         return true;
+    }
+
+    broadcastMessage(message, messageType)
+    {
+        for (var player of this.players)
+            player.sendMessage(message, messageType);
     }
 
     notify(func)
@@ -368,6 +410,7 @@ class Server
             else
                 otherPlayer.sendMessage(`<${player.username}> ${message}`);
         });
+        this.emit('message', player, message);
     }
 
     notifyEntityAdded(entity)

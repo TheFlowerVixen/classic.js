@@ -5,7 +5,7 @@ class FlatLevelGenerator extends LevelGenerator
     // Block format: [7, 1], [1, 29], [3, 2], [2, 1]
     constructor(...blocks)
     {
-        super();
+        super(0);
         this.blockMap = [];
         for (var block of blocks)
         {

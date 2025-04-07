@@ -150,13 +150,13 @@ class Player
         console.log(`Player ${this.username} disconnected`);
         if (this.isLoggedIn())
         {
+            this.playerState = PlayerState.Disconnected;
             this.userData.lastPosition = this.entity.position;
             this.saveUserData(`users/${this.username}.json`, this.userData);
             this.currentLevel.removeEntity(this.entity);
             this.server.removeEntity(this.entity);
             this.server.notifyPlayerDisconnected(this);
         }
-        this.playerState = PlayerState.Disconnected;
     }
 
     networkUpdate()
@@ -499,7 +499,8 @@ class Player
     handleError(err)
     {
         console.log(err);
-        this.disconnect(`Internal error: "${err}"`);
+        if (this.isLoggedIn())
+            this.disconnect(`Internal error: "${err}"`);
     }
 
     tickResponse()
@@ -533,6 +534,11 @@ class Player
 
     disconnect(reason)
     {
+        if (this.playerState == PlayerState.Disconnected)
+        {
+            console.warn(`Tried to disconnect ${this.username}, but they were already disconnected`);
+            return;
+        }
         this.playerState == PlayerState.Disconnected;
         console.log(`Disconnecting ${this.username} with reason "${reason}"`)
         this.sendPacket(PacketType.DisconnectPlayer, {
