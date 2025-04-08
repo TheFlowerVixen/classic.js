@@ -353,7 +353,6 @@ class Server extends EventEmitter
         var commands = [...getDefaultCommands()];
         for (var plugin of this.plugins)
         {
-            console.log(plugin.name);
             for (var command of plugin.getCommands())
             {
                 // Override default/other commands

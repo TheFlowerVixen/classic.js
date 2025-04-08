@@ -322,7 +322,7 @@ class Player
 
     handleCommand(args)
     {
-        var commandName = args.splice(0)[0].substring(1);
+        var commandName = args.splice(0, 1)[0].substring(1);
         this.server.doCommand(this, commandName, args);
     }
 
@@ -581,14 +581,6 @@ class Player
         otherPlayer.sendPacket(PacketType.ExtRemovePlayerName, {
             nameID: this.entity.getIDFor(otherPlayer)
         });
-    }
-
-    debugSendEListMessage(list, type)
-    {
-        var msg = `&eEntities in ${type}: `;
-        for (var entity of list)
-            msg += `${entity.name} (${entity.entityID}) `;
-        this.sendMessage(msg);
     }
 }
 
