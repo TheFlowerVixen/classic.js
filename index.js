@@ -1,4 +1,4 @@
-const Server = require('./modules/server.js').Server;
+const Server = require('classicjs/server').Server;
 
 Error.stackTraceLimit = Infinity;
 global.server = new Server();

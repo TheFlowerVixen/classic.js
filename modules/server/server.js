@@ -1,15 +1,17 @@
 const net = require('node:net');
 const fs = require('fs');
 const crypto = require('crypto');
-const PacketType = require('./network/packet.js').PacketType;
-const serializePacket = require('./network/stream.js').serializePacket;
+const PacketType = require('../network/packet.js').PacketType;
+const serializePacket = require('../network/stream.js').serializePacket;
 const Player = require('./player.js').Player;
-const Level = require('./game/level.js').Level;
-const LevelProperties = require('./game/level.js').LevelProperties;
+const Level = require('../game/level.js').Level;
+const LevelProperties = require('../game/level.js').LevelProperties;
 const Broadcaster = require('./broadcast.js').Broadcaster;
-const FlatLevelGenerator = require('./game/generator/flat.js').FlatLevelGenerator;
-const Entity = require('./game/entity.js').Entity;
+const FlatLevelGenerator = require('../game/generator/flat.js').FlatLevelGenerator;
+const Entity = require('../game/entity.js').Entity;
 const EventEmitter = require('events').EventEmitter;
+const CommandResult = require('./command.js').CommandResult;
+const getDefaultCommands = require('./command.js').getDefaultCommands;
 
 const DefaultProperties = {
     serverName: "classic.js Server",
@@ -111,9 +113,10 @@ class Server extends EventEmitter
         var plugins = [];
         for (var fileName of dir)
         {
-            const PluginClass = require(`../${dirPath}/${fileName}`);
+            const PluginClass = require(`../../${dirPath}/${fileName}`);
             var plugin = new PluginClass();
             plugin.onLoad(this);
+            plugins.push(plugin);
             console.log(`${plugin.name} load`);
         }
         return plugins;
@@ -185,7 +188,7 @@ class Server extends EventEmitter
             {
                 // remove user
                 player.onDisconnect();
-                server.players.splice(server.players.indexOf(player));
+                server.players.splice(server.players.indexOf(player), 1);
             }
         }
     }
@@ -208,7 +211,7 @@ class Server extends EventEmitter
             {
                 // remove user, destroy socket
                 player.socket.end();
-                this.players.splice(this.players.indexOf(player));
+                this.players.splice(this.players.indexOf(player), 1);
             }
             else if (!player.tickResponse())
             {
@@ -343,6 +346,50 @@ class Server extends EventEmitter
     {
         for (var player of this.players)
             player.sendMessage(message, messageType);
+    }
+
+    getAllCommands()
+    {
+        var commands = [...getDefaultCommands()];
+        for (var plugin of this.plugins)
+        {
+            console.log(plugin.name);
+            for (var command of plugin.getCommands())
+            {
+                // Override default/other commands
+                var override = false;
+                for (var oldCmdIdx in commands)
+                {
+                    if (commands[oldCmdIdx].name == command.name)
+                    {
+                        commands[oldCmdIdx] = command;
+                        override = true;
+                        break;
+                    }
+                }
+                if (!override)
+                    commands.push(command);
+            }
+        }
+        return commands;
+    }
+
+    doCommand(sender, commandName, args)
+    {
+        var result = CommandResult.NoSuchCommand;
+        for (var command of this.getAllCommands())
+        {
+            if (command.name == commandName || command.aliases.indexOf(commandName) > -1)
+                result = command.executor.bind(this)(sender, args);
+        }
+        if (result == CommandResult.InvalidArguments)
+            sender.sendMessage(`Usage: ${command.usage.replace('<command>', command.name)}`);
+        return result;
+    }
+
+    sendMessage(message)
+    {
+        console.log(message)
     }
 
     notify(func)

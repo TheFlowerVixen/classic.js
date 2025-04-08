@@ -10,5 +10,10 @@
   "license": "ISC",
   "dependencies": {
     "perlin-noise": "^0.0.1"
+  },
+  "exports": {
+    "./server": "./modules/server/index.js",
+    "./network": "./modules/network/index.js",
+    "./game": "./modules/game/index.js"
   }
 }

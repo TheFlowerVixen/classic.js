@@ -1,9 +1,9 @@
 const crypto = require('crypto');
 const fs = require('fs');
-const PacketType = require('./network/packet.js').PacketType;
-const PacketError = require('./network/stream.js').PacketError;
-const serializePacket = require('./network/stream.js').serializePacket;
-const deserializePacket = require('./network/stream.js').deserializePacket;
+const PacketType = require('../network/packet.js').PacketType;
+const PacketError = require('../network/stream.js').PacketError;
+const serializePacket = require('../network/stream.js').serializePacket;
+const deserializePacket = require('../network/stream.js').deserializePacket;
 
 const PlayerState = {
     Connected: 0,
@@ -322,138 +322,8 @@ class Player
 
     handleCommand(args)
     {
-        switch (args[0])
-        {
-            case '/pos':
-            case '/position':
-                this.sendMessage(`&ePosition: &cX &e${this.entity.position.posX}, &aY &e${this.entity.position.posY}, &9Z &e${this.entity.position.posZ}`)
-                break;
-
-            case '/lvl':
-            case '/level':
-                switch (args[1])
-                {
-                    case 'create':
-                        var name = args[2];
-                        var sizeX = parseInt(args[3]);
-                        var sizeY = parseInt(args[4]);
-                        var sizeZ = parseInt(args[5]);
-                        var success = this.server.createLevel(name, sizeX, sizeY, sizeZ);
-                        console.log(success);
-                        break;
-
-                    case 'goto':
-                        var code = this.server.sendPlayerToLevel(this, args[2]);
-                        if (code == 1)
-                            this.sendMessage('&cThat level does not exist!');
-                        if (code == 2)
-                            this.sendMessage('&cYou are already in this level!');
-                        break;
-                    
-                    case 'weather':
-                        if (!this.supportsCPE)
-                            this.sendMessage('&eNOTE: You are running a vanilla client, so you will not be able to see these changes.');
-                        var success = this.currentLevel.setWeather(parseInt(args[2]));
-                        console.log(success);
-                        break;
-                    
-                    case 'textures':
-                        if (!this.supportsCPE)
-                            this.sendMessage('&eNOTE: You are running a vanilla client, so you will not be able to see these changes.');
-                        var success = this.currentLevel.setTextures(args[2]);
-                        console.log(success);
-                        break;
-                    
-                    case 'property':
-                        if (!this.supportsCPE)
-                            this.sendMessage('&eNOTE: You are running a vanilla client, so you will not be able to see these changes.');
-                        var success = this.currentLevel.setProperty(args[2], parseFloat(args[3]));
-                        console.log(success);
-                        break;
-                }
-                break;
-            
-            case '/lc':
-            case '/local':
-                if (!this.localChat)
-                {
-                    this.localChat = true;
-                    this.sendMessage('&eYou are now chatting locally');
-                }
-                break;
-            
-            case '/gc':
-            case '/global':
-                if (this.localChat)
-                {
-                    this.localChat = false;
-                    this.sendMessage('&eYou are now chatting globally');
-                }
-                break;
-            
-            case '/leave':
-                this.disconnect('See ya!');
-                break;
-            
-            case '/teleport':
-            case '/tp':
-                var x = parseInt(args[1]);
-                var y = parseInt(args[2]);
-                var z = parseInt(args[3]);
-                this.entity.teleportCentered(x, y, z);
-                break;
-            
-            case '/model':
-                this.entity.changeModel(args[1]);
-                break;
-            
-            case '/ext':
-                console.log(this.supportedExtensions);
-                break;
-            
-            case '/reload':
-                this.currentLevel.sendLevelData(this, false);
-                break;
-            
-            case '/hack':
-                var value = args[1];
-                if (value == "true")
-                    value = true;
-                else if (value == "false")
-                    value = false;
-                else
-                    value = parseInt(value);
-                var success = this.setHack(args[1], value);
-                console.log(success);
-                break;
-            
-            case '/clear':
-                for (var i = 0; i < 9; i++)
-                    this.setHotbar(0, i);
-                break;
-            
-            case '/stop':
-                this.server.shutDownServer(0);
-                break;
-            
-            case '/elist':
-                this.debugSendEListMessage(this.currentLevel.entities, "level");
-                this.debugSendEListMessage(this.server.entities, "server");
-                break;
-            
-            case '/summon':
-                if (args.length > 1)
-                {
-                    var entity = this.server.createEntity(args[1]);
-                    var pos = this.entity.position;
-                    entity.joinLevel(this.currentLevel);
-                    entity.updatePositionAndRotation(pos.posX, pos.posY, pos.posZ, pos.pitch, pos.yaw);
-                    if (args.length > 2)
-                        entity.changeModel(args[2]);
-                    this.sendMessage(`Summoned ${args[1]}`);
-                }
-                break;
-        }
+        var commandName = args.splice(0)[0].substring(1);
+        this.server.doCommand(this, commandName, args);
     }
 
     handleSetBlock(data)
