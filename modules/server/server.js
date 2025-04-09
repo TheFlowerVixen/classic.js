@@ -198,8 +198,7 @@ class Server
             if (this === player.socket)
             {
                 // remove user
-                player.onDisconnect();
-                server.players.splice(server.players.indexOf(player), 1);
+                server.removePlayer(player);
             }
         }
     }
@@ -246,7 +245,7 @@ class Server
             level.saveLevel();
     }
 
-    logInPlayer(player)
+    addPlayer(player)
     {
         var collisionPlayer = this.getPlayer(player.username);
         if (collisionPlayer != null)
@@ -260,6 +259,12 @@ class Server
         });
         player.assignEntity(this.createEntity(player.username));
         this.players.push(player);
+    }
+
+    removePlayer(player)
+    {
+        player.onDisconnect();
+        this.players.splice(this.players.indexOf(player), 1);
     }
 
     sendExtensionInfo(player)

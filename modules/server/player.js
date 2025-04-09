@@ -138,7 +138,7 @@ class Player
         console.log(`Player logged in as ${this.username} (auth key ${this.authKey}, supports CPE: ${this.supportsCPE})`);
         this.userData = this.loadUserData(`users/${this.username}.json`);
         this.playerState = PlayerState.LoggedIn;
-        this.server.logInPlayer(this);
+        this.server.addPlayer(this);
         this.server.sendPlayerToLevel(this, this.server.properties.mainLevel);
         if (this.supportsExtension("HackControl"))
             this.sendPacket(PacketType.HackControl, this.hacks);
