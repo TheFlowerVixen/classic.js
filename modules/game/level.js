@@ -50,6 +50,7 @@ class Level
     update()
     {
         // local update
+        global.server.fireEvent('level-update', this);
     }
 
     networkUpdate(player)
@@ -83,6 +84,7 @@ class Level
     {
         this.entities.push(entity);
         global.server.notifyEntityAdded(entity);
+        global.server.fireEvent('level-entityAdded', entity);
     }
 
     removeEntity(entity)
@@ -91,6 +93,7 @@ class Level
         if (entityIndex > -1)
             this.entities.splice(entityIndex, 1);
         global.server.notifyEntityRemoved(entity);
+        global.server.fireEvent('level-entityRemoved', entity);
     }
 
     loadLevel()

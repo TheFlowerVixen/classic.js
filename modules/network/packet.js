@@ -43,6 +43,9 @@ const PacketType = {
     // Extension HackControl
     HackControl: 0x20,
 
+    // Extension PlayerClick
+    PlayerClicked: 0x22,
+
     // Extension EnvWeatherType
     EnvSetWeatherType: 0x1F,
     
@@ -200,6 +203,18 @@ PacketData[PacketType.HackControl] =
     spawn: DataType.UByte,
     perspective: DataType.UByte,
     jumpHeight: DataType.Short
+};
+PacketData[PacketType.PlayerClicked] =
+{
+    button: DataType.UByte,
+    action: DataType.UByte,
+    yaw: DataType.Angle2,
+    pitch: DataType.Angle2,
+    targetEntity: DataType.Byte,
+    targetBlockX: DataType.UShort,
+    targetBlockY: DataType.UShort,
+    targetBlockZ: DataType.UShort,
+    targetBlockFace: DataType.UByte
 };
 PacketData[PacketType.ChangeModel] =
 {

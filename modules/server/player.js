@@ -143,6 +143,7 @@ class Player
         if (this.supportsExtension("HackControl"))
             this.sendPacket(PacketType.HackControl, this.hacks);
         this.server.notifyPlayerConnected(this);
+        this.server.fireEvent('player-login', this);
     }
 
     onDisconnect()
@@ -156,6 +157,7 @@ class Player
             this.currentLevel.removeEntity(this.entity);
             this.server.removeEntity(this.entity);
             this.server.notifyPlayerDisconnected(this);
+            this.server.fireEvent('player-disconnect', this);
         }
     }
 
@@ -216,6 +218,9 @@ class Player
                     this.handleCustomBlockSupportLevel(packet.data);
                     break;
             }
+
+            // Plugins may handle packets individually if they wish
+            this.server.fireEvent('player-packet', this, packet);
         }
         this.resetResponse();
     }
@@ -295,7 +300,20 @@ class Player
     handlePosition(data)
     {
         if (this.entity != null)
-            this.entity.updatePositionAndRotation(data.posX, data.posY, data.posZ, data.pitch, data.yaw);
+        {
+            if (this.server.fireEvent('player-move', this, data))
+                this.entity.updatePositionAndRotation(data.posX, data.posY, data.posZ, data.pitch, data.yaw);
+            else
+                // Reject
+                this.sendPacket(PacketType.PlayerPosition, {
+                    playerID: 255,
+                    posX: this.entity.position.posX,
+                    posY: this.entity.position.posY,
+                    posZ: this.entity.position.posZ,
+                    yaw: this.entity.position.yaw,
+                    pitch: this.entity.position.pitch
+                })
+        }
     }
 
     handleMessage(data)
@@ -317,27 +335,43 @@ class Player
         if (message.startsWith('/'))
             this.handleCommand(message.split(' '));
         else
-            this.server.notifyPlayerMessage(this, message, data.messageType);
+        {
+            if (this.server.fireEvent('player-message', this, message))
+                this.server.notifyPlayerMessage(this, message, data.messageType);
+        }
     }
 
     handleCommand(args)
     {
         var commandName = args.splice(0, 1)[0].substring(1);
         this.server.doCommand(this, commandName, args);
+        this.server.fireEvent('player-command', commandName, args);
     }
 
     handleSetBlock(data)
     {
-        if (data.mode == 0x1)
+        var oldBlock = this.currentLevel.getBlock(data.posX, data.posY, data.posZ);
+        if (!this.server.fireEvent('player-edit', this, data))
         {
-            this.server.notifyBlockPlaced(this, data.posX, data.posY, data.posZ, data.blockType);
-            this.currentLevel.setBlock(data.posX, data.posY, data.posZ, data.blockType);
+            // Reject event
+            if (data.mode == 0x0)
+                data.blockType = oldBlock;
+            if (data.mode == 0x1)
+                data.blockType = 0;
+            this.sendPacket(PacketType.SetBlockServer, data);
         }
-        if (data.mode == 0x0)
+        else
         {
-            var oldBlock = this.currentLevel.getBlock(data.posX, data.posY, data.posZ);
-            this.server.notifyBlockRemoved(this, data.posX, data.posY, data.posZ, oldBlock)
-            this.currentLevel.setBlock(data.posX, data.posY, data.posZ, 0);
+            if (data.mode == 0x1)
+            {
+                this.server.notifyBlockPlaced(this, data.posX, data.posY, data.posZ, data.blockType);
+                this.currentLevel.setBlock(data.posX, data.posY, data.posZ, data.blockType);
+            }
+            if (data.mode == 0x0)
+            {
+                this.server.notifyBlockRemoved(this, data.posX, data.posY, data.posZ, oldBlock)
+                this.currentLevel.setBlock(data.posX, data.posY, data.posZ, 0);
+            }   
         }
     }
 
@@ -414,6 +448,7 @@ class Player
         this.sendPacket(PacketType.DisconnectPlayer, {
             reason: this.adjustString(reason)
         });
+        this.server.fireEvent('player-disconnect', this);
     }
 
     isLoggedIn()

@@ -9,7 +9,6 @@ const LevelProperties = require('../game/level.js').LevelProperties;
 const Broadcaster = require('./broadcast.js').Broadcaster;
 const FlatLevelGenerator = require('../game/generator/flat.js').FlatLevelGenerator;
 const Entity = require('../game/entity.js').Entity;
-const EventEmitter = require('events').EventEmitter;
 const CommandResult = require('./command.js').CommandResult;
 const getDefaultCommands = require('./command.js').getDefaultCommands;
 
@@ -39,11 +38,10 @@ const NotifyFlags = {
     NotMe: 2
 };
 
-class Server extends EventEmitter
+class Server
 {
     constructor()
     {
-        super();
         this.netServer = null;
         
         this.properties = this.loadProperties('properties.json');
@@ -113,11 +111,20 @@ class Server extends EventEmitter
         var plugins = [];
         for (var fileName of dir)
         {
-            const PluginClass = require(`../../${dirPath}/${fileName}`);
-            var plugin = new PluginClass();
-            plugin.onLoad(this);
-            plugins.push(plugin);
-            console.log(`${plugin.name} load`);
+            var pluginName = fileName;
+            try
+            {
+                const PluginClass = require(`../../${dirPath}/${fileName}`);
+                var plugin = new PluginClass();
+                pluginName = plugin.name;
+                plugin.onLoad(this);
+                plugins.push(plugin);
+                console.log(`${plugin.name} loaded successfully`);
+            }
+            catch (error)
+            {
+                console.error(`Failed to load plugin ${pluginName}:`, error);
+            }
         }
         return plugins;
     }
@@ -157,11 +164,14 @@ class Server extends EventEmitter
     {
         var server = global.server;
         console.log(`Server "${server.properties.serverName}" ready`);
+        server.fireEvent('server-ready', server);
     }
 
     onServerClosed()
     {
-        global.server.shutDownServer();
+        var server = global.server;
+        server.shutDownServer();
+        server.fireEvent('server-closed', server);
     }
 
     onServerError(err)
@@ -176,7 +186,8 @@ class Server extends EventEmitter
         var server = global.server;
         //console.log("Client connected, awaiting information...");
         socket.on('close', server.onClientDisconnected);
-        new Player(server, socket);
+        var player = new Player(server, socket);
+        server.fireEvent('player-connected', player);
     }
 
     onClientDisconnected(abrupt)
@@ -222,6 +233,11 @@ class Server extends EventEmitter
                 player.networkUpdate();
             }
         }
+        for (var level of Object.values(this.levels))
+        {
+            level.update();
+        }
+        this.fireEvent('server-update', this);
     }
 
     autosave()
@@ -391,6 +407,23 @@ class Server extends EventEmitter
         console.log(message)
     }
 
+    fireEvent(eventName, ...args)
+    {
+        var retValue = true;
+        for (var plugin of this.plugins)
+        {
+            if (plugin.emit(eventName, ...args))
+            {
+                if (plugin.eventCancelled)
+                {
+                    plugin.eventCancelled = false;
+                    retValue = false;
+                }
+            }
+        }
+        return retValue;
+    }
+
     notify(func)
     {
         for (var otherPlayer of this.players)
@@ -456,7 +489,6 @@ class Server extends EventEmitter
             else
                 otherPlayer.sendMessage(`<${player.username}> ${message}`);
         });
-        this.emit('message', player, message);
     }
 
     notifyEntityAdded(entity)

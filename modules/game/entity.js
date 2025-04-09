@@ -85,8 +85,11 @@ class Entity
 
     teleport(x, y, z)
     {
-        this.updatePositionAndRotation(x, y, z, 0, 0);
-        global.server.notifyEntityTeleport(this);
+        if (global.server.fireEvent('entity-teleport', this, x, y, z))
+        {
+            this.updatePositionAndRotation(x, y, z, 0, 0);
+            global.server.notifyEntityTeleport(this);
+        }
     }
 
     teleportCentered(x, y, z)
@@ -96,8 +99,11 @@ class Entity
 
     changeModel(model)
     {
-        this.model = model;
-        global.server.notifyEntityModelChange(this, model);
+        if (global.server.fireEvent('entity-changeModel', this, model))
+        {
+            this.model = model;
+            global.server.notifyEntityModelChange(this, model);
+        }
     }
 
     getIDFor(player)

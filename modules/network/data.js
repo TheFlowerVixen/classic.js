@@ -18,6 +18,7 @@ const DataType = {
 	Coordinate: 50,
 	Velocity: 51,
 	Angle: 52,
+	Angle2: 53,
 
 	// special types
 	Vector3: 100,
@@ -38,7 +39,8 @@ DataTypeBasic[DataType.Double] = { size: 8, readFunc: 'readDoubleBE', writeFunc:
 const DataTypeScaled = {};
 DataTypeScaled[DataType.Coordinate] = { base: DataType.Short, scale: 32 };
 DataTypeScaled[DataType.Velocity] = { base: DataType.Int, scale: 10000 };
-DataTypeScaled[DataType.Angle] = { base: DataType.UByte, scale: 360/256 };
+DataTypeScaled[DataType.Angle] = { base: DataType.UByte, scale: 360 / 256 };
+DataTypeScaled[DataType.Angle2] = { base: DataType.UShort, scale: 360 / 256 };
 
 const DataTypeSpecial = {};
 DataTypeSpecial[DataType.Vector3] =

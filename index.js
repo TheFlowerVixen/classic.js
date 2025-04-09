@@ -12,4 +12,5 @@ global.server.addSupportedExtension("EnvMapAspect", 2);
 global.server.addSupportedExtension("ExtPlayerList", 2);
 global.server.addSupportedExtension("HackControl", 1);
 global.server.addSupportedExtension("EnvWeatherType", 1);
+global.server.addSupportedExtension("PlayerClick", 1);
 global.server.startServer(25565);
