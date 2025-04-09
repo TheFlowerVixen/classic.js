@@ -351,16 +351,7 @@ class Player
     handleSetBlock(data)
     {
         var oldBlock = this.currentLevel.getBlock(data.posX, data.posY, data.posZ);
-        if (!this.server.fireEvent('player-edit', this, data))
-        {
-            // Reject event
-            if (data.mode == 0x0)
-                data.blockType = oldBlock;
-            if (data.mode == 0x1)
-                data.blockType = 0;
-            this.sendPacket(PacketType.SetBlockServer, data);
-        }
-        else
+        if (this.server.fireEvent('player-edit', this, data))
         {
             if (data.mode == 0x1)
             {
@@ -372,6 +363,15 @@ class Player
                 this.server.notifyBlockRemoved(this, data.posX, data.posY, data.posZ, oldBlock)
                 this.currentLevel.setBlock(data.posX, data.posY, data.posZ, 0);
             }   
+        }
+        else
+        {
+            // Reject event
+            if (data.mode == 0x0)
+                data.blockType = oldBlock;
+            if (data.mode == 0x1)
+                data.blockType = 0;
+            this.sendPacket(PacketType.SetBlockServer, data);
         }
     }
 
