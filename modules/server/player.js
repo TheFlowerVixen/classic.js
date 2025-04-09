@@ -4,6 +4,7 @@ const PacketType = require('../network/packet.js').PacketType;
 const PacketError = require('../network/stream.js').PacketError;
 const serializePacket = require('../network/stream.js').serializePacket;
 const deserializePacket = require('../network/stream.js').deserializePacket;
+const CommandSender = require('./command.js').CommandSender;
 
 const PlayerState = {
     Connected: 0,
@@ -41,10 +42,14 @@ const FallbackBlocksLevel1 = [
     0x01
 ]
 
-class Player
+class Player extends CommandSender
 {
     constructor(server, socket)
     {
+        // CommandSender
+        super();
+        this.isPlayer = true;
+
         this.server = server;
         this.socket = socket;
 
@@ -138,6 +143,9 @@ class Player
         console.log(`Player logged in as ${this.username} (auth key ${this.authKey}, supports CPE: ${this.supportsCPE})`);
         this.userData = this.loadUserData(`users/${this.username}.json`);
         this.playerState = PlayerState.LoggedIn;
+        this.sendPacket(PacketType.SetRank, {
+            rank: this.userData.rank
+        });
         this.server.addPlayer(this);
         this.server.sendPlayerToLevel(this, this.server.properties.mainLevel);
         if (this.supportsExtension("HackControl"))
@@ -345,7 +353,7 @@ class Player
     {
         var commandName = args.splice(0, 1)[0].substring(1);
         this.server.doCommand(this, commandName, args);
-        this.server.fireEvent('player-command', commandName, args);
+        this.server.fireEvent('player-command', this, commandName, args);
     }
 
     handleSetBlock(data)
@@ -532,6 +540,25 @@ class Player
                 return true;
         }
         return false;
+    }
+
+    getName()
+    {
+        return this.username;
+    }
+
+    hasRank(rank)
+    {
+        return this.userData.rank >= rank;
+    }
+
+    setRank(rank)
+    {
+        this.userData.rank = rank;
+        this.sendPacket(PacketType.SetRank, {
+            rank: this.userData.rank
+        });
+        this.sendMessage('&eYour rank has been updated');
     }
 
     changeClickDistance(clickDistance)

@@ -9,11 +9,15 @@ const Broadcaster = require('./broadcast.js').Broadcaster;
 
 const CommandResult = require('./command.js').CommandResult;
 const getDefaultCommands = require('./command.js').getDefaultCommands;
+const CommandSender = require('./command.js').CommandSender;
+
+const Console = require('./console.js').Console;
 
 module.exports = {
     Server,
     Plugin,
     Player, PlayerState,
     Broadcaster,
-    CommandResult, getDefaultCommands
+    CommandResult, getDefaultCommands, CommandSender,
+    Console
 };

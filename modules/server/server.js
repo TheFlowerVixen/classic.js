@@ -11,6 +11,7 @@ const FlatLevelGenerator = require('../game/generator/flat.js').FlatLevelGenerat
 const Entity = require('../game/entity.js').Entity;
 const CommandResult = require('./command.js').CommandResult;
 const getDefaultCommands = require('./command.js').getDefaultCommands;
+const Console = require('./console.js').Console;
 
 const DefaultProperties = {
     serverName: "classic.js Server",
@@ -44,12 +45,16 @@ class Server
     {
         this.netServer = null;
         
-        this.properties = this.loadProperties('properties.json');
-        this.serverKey = this.loadServerKey('SERVER_KEY');
         this.players = [];
         this.entities = [];
-        this.levels = this.loadLevels('levels');
-        this.plugins = this.loadPlugins('plugins');
+
+        this.properties = null;
+        this.serverKey = null;
+        this.levels = {};
+        this.plugins = [];
+        this.commands = [];
+        this.loadServer();
+
         this.supportedExtensions = [];
         this.broadcaster = new Broadcaster(this);
 
@@ -57,6 +62,15 @@ class Server
         this.updateInterval = null;
         this.autosaveInterval = null;
         this.ticksRan = 0;
+    }
+
+    loadServer()
+    {
+        this.properties = this.loadProperties('properties.json');
+        this.serverKey = this.loadServerKey('SERVER_KEY');
+        this.levels = this.loadLevels('levels');
+        this.plugins = this.loadPlugins('plugins');
+        this.commands = this.loadCommands();
     }
 
     loadProperties(filePath)
@@ -136,10 +150,44 @@ class Server
         this.plugins = [];
     }
 
+    loadCommands()
+    {
+        var commands = [...getDefaultCommands()];
+        for (var plugin of this.plugins)
+        {
+            for (var command of plugin.getCommands())
+            {
+                // Override default/other commands
+                var override = false;
+                for (var oldCmdIdx in commands)
+                {
+                    if (commands[oldCmdIdx].name == command.name)
+                    {
+                        commands[oldCmdIdx] = command;
+                        override = true;
+                        break;
+                    }
+                }
+                if (!override)
+                    commands.push(command);
+            }
+        }
+        return commands;
+    }
+
     reload()
     {
         this.unloadPlugins();
-        this.plugins = this.loadPlugins('plugins');
+
+        // Reload server
+        this.loadServer();
+
+        // Reload players
+        for (var player of this.players)
+        {
+            player.loadUserData(`users/${player.username}.json`);
+            player.currentLevel.sendLevelData(player, false);
+        }
     }
 
     getCipherKeys()
@@ -164,6 +212,7 @@ class Server
     {
         var server = global.server;
         console.log(`Server "${server.properties.serverName}" ready`);
+        this.serverConsole = new Console();
         server.fireEvent('server-ready', server);
     }
 
@@ -367,43 +416,42 @@ class Server
     {
         for (var player of this.players)
             player.sendMessage(message, messageType);
-    }
-
-    getAllCommands()
-    {
-        var commands = [...getDefaultCommands()];
-        for (var plugin of this.plugins)
-        {
-            for (var command of plugin.getCommands())
-            {
-                // Override default/other commands
-                var override = false;
-                for (var oldCmdIdx in commands)
-                {
-                    if (commands[oldCmdIdx].name == command.name)
-                    {
-                        commands[oldCmdIdx] = command;
-                        override = true;
-                        break;
-                    }
-                }
-                if (!override)
-                    commands.push(command);
-            }
-        }
-        return commands;
+        console.log(message);
     }
 
     doCommand(sender, commandName, args)
     {
         var result = CommandResult.NoSuchCommand;
-        for (var command of this.getAllCommands())
+        for (var command of this.commands)
         {
             if (command.name == commandName || command.aliases.indexOf(commandName) > -1)
-                result = command.executor.bind(this)(sender, args);
+            {
+                if (command.requiredRank != undefined)
+                {
+                    if (sender.hasRank(command.requiredRank))
+                        result = command.executor.bind(this)(sender, args);
+                    else
+                        result = CommandResult.NoPermission;
+                }
+                else
+                    result = command.executor.bind(this)(sender, args);
+            }
         }
-        if (result == CommandResult.InvalidArguments)
-            sender.sendMessage(`Usage: ${command.usage.replace('<command>', command.name)}`);
+        switch (result)
+        {
+            case CommandResult.InvalidArguments:
+                sender.sendMessage(`Usage: ${command.usage.replace('<command>', command.name)}`);
+                break;
+            
+            case CommandResult.NoSuchCommand:
+                sender.sendMessage('&cUnknown command - type /help for a list of commands');
+                break;
+            
+            case CommandResult.NoPermission:
+                sender.sendMessage('&cInsufficient permissions!');
+                console.warn(`${sender.username} tried to run a command they didn't have permission to: ${commandName}`);
+                break;
+        }
         return result;
     }
 
@@ -488,12 +536,18 @@ class Server
 
     notifyPlayerMessage(player, message, messageType)
     {
-        this.notify((otherPlayer) => {
-            if (player.localChat && otherPlayer.currentLevel === player.currentLevel)
+        if (player.localChat)
+        {
+            this.notifyLocal((otherPlayer) => {
                 otherPlayer.sendMessage(`(LOCAL) <${player.username}> ${message}`);
-            else
+            });
+        }
+        else
+        {
+            this.notify((otherPlayer) => {
                 otherPlayer.sendMessage(`<${player.username}> ${message}`);
-        });
+            });
+        }
     }
 
     notifyEntityAdded(entity)
