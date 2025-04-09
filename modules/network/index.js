@@ -4,6 +4,8 @@ const getDataTypeSize = require('./data.js').getDataTypeSize;
 const getDataTypeScaleFactor = require('./data.js').getDataTypeScaleFactor;
 const getDataTypeReadFunc = require('./data.js').getDataTypeReadFunc;
 const getDataTypeWriteFunc = require('./data.js').getDataTypeWriteFunc;
+const getDataTypeMinValue = require('./data.js').getDataTypeMinValue;
+const getDataTypeMaxValue = require('./data.js').getDataTypeMaxValue;
 const writeDataType = require('./data.js').writeDataType;
 const readDataType = require('./data.js').readDataType;
 
@@ -16,7 +18,7 @@ const deserializePacket = require('./stream.js').deserializePacket;
 
 module.exports = {
     DataType, DataTypeSpecial, writeDataType, readDataType,
-    getDataTypeSize, getDataTypeScaleFactor, getDataTypeReadFunc, getDataTypeWriteFunc,
+    getDataTypeSize, getDataTypeScaleFactor, getDataTypeReadFunc, getDataTypeWriteFunc, getDataTypeMinValue, getDataTypeMaxValue,
     PacketType, PacketData,
     PacketError, serializePacket, deserializePacket
 }

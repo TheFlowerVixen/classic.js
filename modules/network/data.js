@@ -17,26 +17,28 @@ const DataType = {
 	// scaled types
 	Coordinate: 50,
 	Velocity: 51,
+	Angle: 52,
 
 	// special types
 	Vector3: 100,
 	UVCoords: 101,
-	AnimData: 102 
+	AnimData: 102
 }
 
 const DataTypeBasic = {};
-DataTypeBasic[DataType.Byte] = { size: 1, readFunc: 'readInt8', writeFunc: 'writeInt8' };
-DataTypeBasic[DataType.UByte] = { size: 1, readFunc: 'readUInt8', writeFunc: 'writeUInt8' };
-DataTypeBasic[DataType.Short] = { size: 2, readFunc: 'readInt16BE', writeFunc: 'writeInt16BE' };
-DataTypeBasic[DataType.UShort] = { size: 2, readFunc: 'readUInt16BE', writeFunc: 'writeUInt16BE' };
-DataTypeBasic[DataType.Int] = { size: 4, readFunc: 'readInt32BE', writeFunc: 'writeInt32BE' };
-DataTypeBasic[DataType.UInt] = { size: 4, readFunc: 'readUInt32BE', writeFunc: 'writeUInt32BE' };
-DataTypeBasic[DataType.Float] = { size: 4, readFunc: 'readFloatBE', writeFunc: 'writeFloatBE' };
-DataTypeBasic[DataType.Double] = { size: 8, readFunc: 'readDoubleBE', writeFunc: 'writeDoubleBE' };
+DataTypeBasic[DataType.Byte] = { size: 1, readFunc: 'readInt8', writeFunc: 'writeInt8', minValue: -128, maxValue: 127 };
+DataTypeBasic[DataType.UByte] = { size: 1, readFunc: 'readUInt8', writeFunc: 'writeUInt8', minValue: 0, maxValue: 255 };
+DataTypeBasic[DataType.Short] = { size: 2, readFunc: 'readInt16BE', writeFunc: 'writeInt16BE', minValue: -32768, maxValue: 32767 };
+DataTypeBasic[DataType.UShort] = { size: 2, readFunc: 'readUInt16BE', writeFunc: 'writeUInt16BE', minValue: 0, maxValue: 65535 };
+DataTypeBasic[DataType.Int] = { size: 4, readFunc: 'readInt32BE', writeFunc: 'writeInt32BE', minValue: -2147483648, maxValue: 2147483647 };
+DataTypeBasic[DataType.UInt] = { size: 4, readFunc: 'readUInt32BE', writeFunc: 'writeUInt32BE', minValue: 0, maxValue: 2147483647 };
+DataTypeBasic[DataType.Float] = { size: 4, readFunc: 'readFloatBE', writeFunc: 'writeFloatBE', minValue: Number.MIN_VALUE / 2, maxValue: Number.MAX_VALUE / 2 };
+DataTypeBasic[DataType.Double] = { size: 8, readFunc: 'readDoubleBE', writeFunc: 'writeDoubleBE', minValue: Number.MIN_VALUE, maxValue: Number.MAX_VALUE };
 
 const DataTypeScaled = {};
 DataTypeScaled[DataType.Coordinate] = { base: DataType.Short, scale: 32 };
 DataTypeScaled[DataType.Velocity] = { base: DataType.Int, scale: 10000 };
+DataTypeScaled[DataType.Angle] = { base: DataType.UByte, scale: 360/256 };
 
 const DataTypeSpecial = {};
 DataTypeSpecial[DataType.Vector3] =
@@ -73,6 +75,20 @@ function getDataTypeWriteFunc(type)
 	if (type >= 50 && type < 100)
 		return DataTypeBasic[DataTypeScaled[type].base].writeFunc;
 	return DataTypeBasic[type].writeFunc;
+}
+
+function getDataTypeMinValue(type)
+{
+	if (type >= 50 && type < 100)
+		return DataTypeBasic[DataTypeScaled[type].base].minValue;
+	return DataTypeBasic[type].maxValue;
+}
+
+function getDataTypeMaxValue(type)
+{
+	if (type >= 50 && type < 100)
+		return DataTypeBasic[DataTypeScaled[type].base].maxValue;
+	return DataTypeBasic[type].maxValue;
 }
 
 function getDataTypeSize(type)
@@ -153,4 +169,4 @@ function readDataType(type, netStream)
 	}
 }
 
-module.exports = { DataType, DataTypeBasic, DataTypeSpecial, getDataTypeReadFunc, getDataTypeWriteFunc, getDataTypeSize, getDataTypeScaleFactor, writeDataType, readDataType };
+module.exports = { DataType, DataTypeBasic, DataTypeSpecial, getDataTypeReadFunc, getDataTypeWriteFunc, getDataTypeSize, getDataTypeScaleFactor, getDataTypeMinValue, getDataTypeMaxValue, writeDataType, readDataType };

@@ -106,8 +106,8 @@ PacketData[PacketType.AddPlayer] =
     posX: DataType.Coordinate,
     posY: DataType.Coordinate,
     posZ: DataType.Coordinate,
-    yaw: DataType.UByte,
-    pitch: DataType.UByte
+    yaw: DataType.Angle,
+    pitch: DataType.Angle
 };
 PacketData[PacketType.PlayerPosition] =
 {
@@ -115,8 +115,8 @@ PacketData[PacketType.PlayerPosition] =
     posX: DataType.Coordinate,
     posY: DataType.Coordinate,
     posZ: DataType.Coordinate,
-    yaw: DataType.UByte,
-    pitch: DataType.UByte
+    yaw: DataType.Angle,
+    pitch: DataType.Angle
 };
 PacketData[PacketType.PosRotUpdate] =
 {
@@ -124,8 +124,8 @@ PacketData[PacketType.PosRotUpdate] =
     deltaX: DataType.Byte,
     deltaY: DataType.Byte,
     deltaZ: DataType.Byte,
-    deltaYaw: DataType.UByte,
-    deltaPitch: DataType.UByte
+    deltaYaw: DataType.Angle,
+    deltaPitch: DataType.Angle
 };
 PacketData[PacketType.PosUpdate] =
 {
@@ -137,8 +137,8 @@ PacketData[PacketType.PosUpdate] =
 PacketData[PacketType.RotUpdate] =
 {
     playerID: DataType.Byte,
-    deltaYaw: DataType.UByte,
-    deltaPitch: DataType.UByte
+    deltaYaw: DataType.Angle,
+    deltaPitch: DataType.Angle
 };
 PacketData[PacketType.RemovePlayer] =
 {
@@ -218,8 +218,8 @@ PacketData[PacketType.ExtAddEntity2] =
     spawnX: DataType.Coordinate,
     spawnY: DataType.Coordinate,
     spawnZ: DataType.Coordinate,
-    spawnYaw: DataType.UByte,
-    spawnPitch: DataType.UByte
+    spawnYaw: DataType.Angle,
+    spawnPitch: DataType.Angle
 };
 PacketData[PacketType.SetMapEnvUrl] =
 {

@@ -7,6 +7,8 @@ const getDataTypeSize = require('./data.js').getDataTypeSize;
 const getDataTypeScaleFactor = require('./data.js').getDataTypeScaleFactor;
 const getDataTypeReadFunc = require('./data.js').getDataTypeReadFunc;
 const getDataTypeWriteFunc = require('./data.js').getDataTypeWriteFunc;
+const getDataTypeMinValue = require('./data.js').getDataTypeMinValue;
+const getDataTypeMaxValue = require('./data.js').getDataTypeMaxValue;
 const writeDataType = require('./data.js').writeDataType;
 const readDataType = require('./data.js').readDataType;
 
@@ -42,7 +44,8 @@ class NetStream
 		else
 		{
 			var buffer = Buffer.alloc(getDataTypeSize(type));
-			buffer[getDataTypeWriteFunc(type)](data * getDataTypeScaleFactor(type));
+			var value = data * getDataTypeScaleFactor(type);
+			buffer[getDataTypeWriteFunc(type)](value);
 			this.chunks.push(buffer);
 		}
 	}
