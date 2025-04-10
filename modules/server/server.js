@@ -12,6 +12,7 @@ const Entity = require('../game/entity.js').Entity;
 const CommandResult = require('./command.js').CommandResult;
 const getDefaultCommands = require('./command.js').getDefaultCommands;
 const Console = require('./console.js').Console;
+const ansiColorMessage = require('./console.js').ansiColorMessage;
 
 const DefaultProperties = {
     serverName: "classic.js Server",
@@ -235,7 +236,15 @@ class Server
         var server = global.server;
         //console.log("Client connected, awaiting information...");
         socket.on('close', server.onClientDisconnected);
-        var player = new Player(server, socket);
+        var id = 0;
+        for (var player of server.players)
+        {
+            if (player.playerID == id)
+                id++;
+            else
+                break;
+        }
+        var player = new Player(server, socket, id);
         server.fireEvent('player-connected', player);
     }
 
@@ -416,25 +425,35 @@ class Server
     {
         for (var player of this.players)
             player.sendMessage(message, messageType);
-        console.log(message);
+        console.log(ansiColorMessage(message));
     }
 
     doCommand(sender, commandName, args)
     {
         var result = CommandResult.NoSuchCommand;
+        var errorMessage = "";
         for (var command of this.commands)
         {
             if (command.name == commandName || command.aliases.indexOf(commandName) > -1)
             {
-                if (command.requiredRank != undefined)
+                try
                 {
-                    if (sender.hasRank(command.requiredRank))
-                        result = command.executor.bind(this)(sender, args);
+                    if (command.requiredRank != undefined)
+                    {
+                        if (sender.hasRank(command.requiredRank))
+                            result = command.executor.bind(this)(sender, args);
+                        else
+                            result = CommandResult.NoPermission;
+                    }
                     else
-                        result = CommandResult.NoPermission;
+                        result = command.executor.bind(this)(sender, args);
                 }
-                else
-                    result = command.executor.bind(this)(sender, args);
+                catch (error)
+                {
+                    errorMessage = error.message;
+                    console.error(error);
+                    result = CommandResult.Error;
+                }
             }
         }
         switch (result)
@@ -449,8 +468,11 @@ class Server
             
             case CommandResult.NoPermission:
                 sender.sendMessage('&cInsufficient permissions!');
-                console.warn(`${sender.username} tried to run a command they didn't have permission to: ${commandName}`);
+                console.warn(`${sender.getName()} tried to run a command they didn't have permission to: ${commandName}`);
                 break;
+            
+            case CommandResult.Error:
+                sender.sendMessage(`&cAn error occurred running this command: ${errorMessage}`);
         }
         return result;
     }
@@ -465,13 +487,20 @@ class Server
         var retValue = true;
         for (var plugin of this.plugins)
         {
-            if (plugin.emit(eventName, ...args))
+            try
             {
-                if (plugin.eventCancelled)
+                if (plugin.emit(eventName, ...args))
                 {
-                    plugin.eventCancelled = false;
-                    retValue = false;
+                    if (plugin.eventCancelled)
+                    {
+                        plugin.eventCancelled = false;
+                        retValue = false;
+                    }
                 }
+            }
+            catch (error)
+            {
+                console.error(`Error occurred firing event ${eventName}:`, error);
             }
         }
         return retValue;
@@ -515,6 +544,7 @@ class Server
 
     notifyPlayerConnected(player)
     {
+        this.notify(player.sendPlayerListAdded);
         this.notifyOthers(player, (otherPlayer) => {
             otherPlayer.sendMessage(`&e${player.username} joined the game`);
         });
@@ -522,16 +552,15 @@ class Server
 
     notifyPlayerDisconnected(player)
     {
+        this.notify(player.sendPlayerListRemoved);
         this.notifyOthers(player, (otherPlayer) => {
             otherPlayer.sendMessage(`&e${player.username} left the game`);
         });
     }
     
-    notifyPlayerChangeLevel(player)
+    notifyPlayerInfoUpdate(player)
     {
-        this.notifyOthers(player, (otherPlayer) => {
-            player.sendPlayerListAdded(otherPlayer);
-        });
+        this.notify(player.sendPlayerListAdded);
     }
 
     notifyPlayerMessage(player, message, messageType)

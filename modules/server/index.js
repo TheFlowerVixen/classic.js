@@ -12,6 +12,7 @@ const getDefaultCommands = require('./command.js').getDefaultCommands;
 const CommandSender = require('./command.js').CommandSender;
 
 const Console = require('./console.js').Console;
+const ansiColorMessage = require('./console.js').ansiColorMessage;
 
 module.exports = {
     Server,

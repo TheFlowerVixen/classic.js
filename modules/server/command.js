@@ -2,7 +2,8 @@ const CommandResult = {
     NoSuchCommand: 1,
     InvalidArguments: 2,
     NoPermission: 3,
-    Success: 4
+    Error: 4,
+    Success: 5
 };
 
 function getDefaultCommands()
@@ -87,10 +88,7 @@ function getDefaultCommands()
                 
                 case 'create':
                     if (!sender.hasRank(100))
-                    {
-                        sender.sendMessage(`&cYou don't have permission to do that!`);
                         return CommandResult.NoPermission;
-                    }
 
                     var name = args[1];
                     var sizeX = parseInt(args[2]);
@@ -116,10 +114,7 @@ function getDefaultCommands()
                 
                 case 'weather':
                     if (!sender.hasRank(100))
-                    {
-                        sender.sendMessage(`&cYou don't have permission to do that!`);
                         return CommandResult.NoPermission;
-                    }
                     if (!sender.supportsCPE)
                         sender.sendMessage('&bNOTE: &eYou are running a vanilla client, so you will not be able to see these changes.');
                     var success = sender.currentLevel.setWeather(parseInt(args[1]));
@@ -127,10 +122,7 @@ function getDefaultCommands()
                 
                 case 'textures':
                     if (!sender.hasRank(100))
-                    {
-                        sender.sendMessage(`&cYou don't have permission to do that!`);
                         return CommandResult.NoPermission;
-                    }
                     if (sender.supportsCPE)
                         sender.sendMessage('&bNOTE: &eYou are running a vanilla client, so you will not be able to see these changes.');
                     var success = sender.currentLevel.setTextures(args[1]);
@@ -138,10 +130,7 @@ function getDefaultCommands()
                 
                 case 'property':
                     if (!sender.hasRank(100))
-                    {
-                        sender.sendMessage(`&cYou don't have permission to do that!`);
                         return CommandResult.NoPermission;
-                    }
                     if (!sender.supportsCPE)
                         sender.sendMessage('&bNOTE: &eYou are running a vanilla client, so you will not be able to see these changes.');
                     var success = sender.currentLevel.setProperty(args[1], parseFloat(args[2]));

@@ -1,6 +1,30 @@
 const CommandSender = require('./command.js').CommandSender;
 const readline = require('readline');
 
+const ColorCodeToANSICode = "042615378cae9dbf";
+
+function ansiColorMessage(message)
+{
+    var newMessage = "";
+    for (var i = 0; i < message.length; i++)
+    {
+        var chr = message[i];
+        if (chr == "&")
+        {
+            i++;
+            var codeIndex = ColorCodeToANSICode.indexOf(message[i]);
+            if (codeIndex > -1)
+            {
+                var code = codeIndex > 7 ? 90 + (codeIndex - 8) : 30 + codeIndex;
+                newMessage += `\x1b[${code}m`;
+            }
+        }
+        else
+            newMessage += chr;
+    }
+    return `${newMessage}\x1b[0m`;
+}
+
 class Console extends CommandSender
 {
     constructor()
@@ -27,7 +51,7 @@ class Console extends CommandSender
 
     sendMessage(message, type = 0)
     {
-        console.log(message);
+        console.log(ansiColorMessage(message));
     }
 
     hasRank(rank)
@@ -44,4 +68,4 @@ class Console extends CommandSender
     }
 }
 
-module.exports = { Console };
+module.exports = { Console, ansiColorMessage };

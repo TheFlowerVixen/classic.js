@@ -44,12 +44,13 @@ const FallbackBlocksLevel1 = [
 
 class Player extends CommandSender
 {
-    constructor(server, socket)
+    constructor(server, socket, playerID)
     {
         // CommandSender
         super();
         this.isPlayer = true;
 
+        this.playerID = playerID;
         this.server = server;
         this.socket = socket;
 
@@ -501,7 +502,7 @@ class Player extends CommandSender
                 this.currentLevel.removeEntity(this.entity);
             this.currentLevel = level;
             this.entity.joinLevel(level);
-            this.server.notifyPlayerChangeLevel(this);
+            this.server.notifyPlayerInfoUpdate(this);
         }
     }
 
@@ -547,6 +548,11 @@ class Player extends CommandSender
         return this.username;
     }
 
+    getCurrentLevel()
+    {
+        return this.currentLevel;
+    }
+
     hasRank(rank)
     {
         return this.userData.rank >= rank;
@@ -559,6 +565,7 @@ class Player extends CommandSender
             rank: this.userData.rank
         });
         this.sendMessage('&eYour rank has been updated');
+        this.server.notifyPlayerInfoUpdate(this);
     }
 
     changeClickDistance(clickDistance)
@@ -629,11 +636,11 @@ class Player extends CommandSender
         if (otherPlayer.supportsExtension("ExtPlayerList", 1) && otherPlayer.currentLevel === entity.currentLevel)
         {
             otherPlayer.sendPacket(PacketType.ExtAddPlayerName, {
-                nameID: this.entity.getIDFor(otherPlayer),
+                nameID: this.playerID,
                 playerName: this.entity.name,
                 listName: this.entity.name,
                 groupName: this.currentLevel.levelName,
-                groupRank: 0
+                groupRank: this.userData.rank
             });
         }
     }
@@ -641,7 +648,7 @@ class Player extends CommandSender
     sendPlayerListRemoved(otherPlayer)
     {
         otherPlayer.sendPacket(PacketType.ExtRemovePlayerName, {
-            nameID: this.entity.getIDFor(otherPlayer)
+            nameID: this.playerID
         });
     }
 }
