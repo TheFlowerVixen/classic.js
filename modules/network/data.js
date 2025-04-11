@@ -22,7 +22,7 @@ const DataType = {
 	Angle: 52,
 	Angle2: 53,
 
-	// special types
+	// struct types
 	Vector3: 100,
 	UVCoords: 101,
 	AnimData: 102
@@ -44,21 +44,21 @@ DataTypeScaled[DataType.Velocity] = { base: DataType.Int, scale: 10000 };
 DataTypeScaled[DataType.Angle] = { base: DataType.UByte, scale: 360 / 256 };
 DataTypeScaled[DataType.Angle2] = { base: DataType.UShort, scale: 360 / 256 };
 
-const DataTypeSpecial = {};
-DataTypeSpecial[DataType.Vector3] =
+const DataTypeStruct = {};
+DataTypeStruct[DataType.Vector3] =
 {
 	x: DataType.Float,
 	y: DataType.Float,
 	z: DataType.Float 
 }
-DataTypeSpecial[DataType.UVCoords] =
+DataTypeStruct[DataType.UVCoords] =
 {
 	u1: DataType.UShort,
 	v1: DataType.UShort,
 	u2: DataType.UShort,
 	v2: DataType.UShort
 };
-DataTypeSpecial[DataType.AnimData] =
+DataTypeStruct[DataType.AnimData] =
 {
 	flags: DataType.UByte,
 	a: DataType.Float,
@@ -113,7 +113,7 @@ function getDataTypeSize(type)
 			if (type >= 100)
 			{
 				var size = 0;
-				for (const value in Object.values(DataTypeSpecial[type]))
+				for (const value in Object.values(DataTypeStruct[type]))
 					size += getDataTypeSize(value);
 				return size;
 			}
@@ -173,4 +173,4 @@ function readDataType(type, netStream)
 	}
 }
 
-module.exports = { DataType, DataTypeBasic, DataTypeSpecial, getDataTypeReadFunc, getDataTypeWriteFunc, getDataTypeSize, getDataTypeScaleFactor, getDataTypeMinValue, getDataTypeMaxValue, writeDataType, readDataType };
+module.exports = { DataType, DataTypeBasic, DataTypeStruct, getDataTypeReadFunc, getDataTypeWriteFunc, getDataTypeSize, getDataTypeScaleFactor, getDataTypeMinValue, getDataTypeMaxValue, writeDataType, readDataType };

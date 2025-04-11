@@ -3,7 +3,7 @@
 
 const PacketData = require('./packet.js').PacketData;
 const DataType = require('./data.js').DataType;
-const DataTypeSpecial = require('./data.js').DataTypeSpecial;
+const DataTypeStruct = require('./data.js').DataTypeStruct;
 const getDataTypeSize = require('./data.js').getDataTypeSize;
 const getDataTypeScaleFactor = require('./data.js').getDataTypeScaleFactor;
 const getDataTypeReadFunc = require('./data.js').getDataTypeReadFunc;
@@ -39,7 +39,7 @@ class NetStream
 	{
 		if (type >= 100)
 		{
-			for (const [key, value] of Object.entries(DataTypeSpecial[type]))
+			for (const [key, value] of Object.entries(DataTypeStruct[type]))
 				this.writeData(value, data[key]);
 		}
 		else
@@ -57,7 +57,7 @@ class NetStream
 		if (type >= 100)
 		{
 			var data = {};
-			for (const [key, value] of Object.entries(DataTypeSpecial[type]))
+			for (const [key, value] of Object.entries(DataTypeStruct[type]))
 				data[key] = this.readData(value);
 			return data;
 		}
