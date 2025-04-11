@@ -56,6 +56,7 @@ class Server
         this.levels = {};
         this.plugins = [];
         this.commands = [];
+        this.bans = [];
         this.loadServer();
 
         this.supportedExtensions = [];
@@ -74,6 +75,7 @@ class Server
         this.levels = this.loadLevels('levels');
         this.plugins = this.loadPlugins('plugins');
         this.commands = this.loadCommands();
+        this.bans = this.loadBans('bans.json');
     }
 
     loadProperties(filePath)
@@ -178,6 +180,19 @@ class Server
         return commands;
     }
 
+    loadBans(filePath)
+    {
+        var finalBans = [];
+        if (!fs.existsSync(filePath))
+            fs.writeFileSync(filePath, JSON.stringify(finalBans, null, 4));
+        else
+        {
+            finalBans = JSON.parse(fs.readFileSync(filePath).toString());
+            fs.writeFileSync(filePath, JSON.stringify(finalBans, null, 4));
+        }
+        return finalBans;
+    }
+
     reload()
     {
         this.unloadPlugins();
@@ -239,7 +254,6 @@ class Server
     {
         var server = global.server;
         //console.log("Client connected, awaiting information...");
-        socket.on('close', server.onClientDisconnected);
         var id = 0;
         for (var player of server.players)
         {
@@ -250,19 +264,6 @@ class Server
         }
         var newPlayer = new Player(server, socket, id);
         server.fireEvent('player-connected', newPlayer);
-    }
-
-    onClientDisconnected(abrupt)
-    {
-        var server = global.server;
-        for (var player of server.players)
-        {
-            if (this === player.socket)
-            {
-                // remove user
-                server.removePlayer(player);
-            }
-        }
     }
 
     heartbeat()
@@ -325,8 +326,10 @@ class Server
 
     removePlayer(player)
     {
-        player.onDisconnect();
         this.players.splice(this.players.indexOf(player), 1);
+        if (player.isLoggedIn())
+            // Don't know if this will ever happen
+            player.disconnect('You were forcefully removed!');
     }
 
     sendExtensionInfo(player)
@@ -344,14 +347,14 @@ class Server
         });
     }
 
-    sendPlayerToLevel(player, level)
+    sendPlayerToLevel(player, level, resetPosition = true)
     {
         if (this.levels[level] == undefined)
             return 1;
         else if (player.currentLevel === this.levels[level])
             return 2;
         else
-            player.sendToLevel(this.levels[level]);
+            player.sendToLevel(this.levels[level], resetPosition);
         return 0;
     }
 
@@ -364,8 +367,59 @@ class Server
         for (var player of server.players)
             player.disconnect('Server shutting down');
         server.unloadPlugins();
+        fs.writeFileSync('bans.json', JSON.stringify(this.bans));
         server.netServer.close();
         process.exit(exitCode);
+    }
+
+    banPlayer(player, reason)
+    {
+        if (this.isPlayerBanned(player))
+            return false;
+        var ban = {
+            name: player.username,
+            ip: player.socket.remoteAddress,
+            reason: reason
+        };
+        this.bans.push(ban);
+        console.log(this.bans);
+        fs.writeFileSync('bans.json', JSON.stringify(this.bans));
+        player.disconnect(`You are banned from this server! Reason: ${reason}`);
+        return true;
+    }
+
+    pardonPlayer(playerName)
+    {
+        for (var i = 0; i < this.bans.length; i++)
+        {
+            if (this.bans[i].name == playerName)
+            {
+                this.bans.splice(i, 1);
+                fs.writeFileSync('bans.json', JSON.stringify(this.bans));
+                return true;
+            }
+        }
+        return false;
+    }
+
+    isPlayerBanned(player)
+    {
+        for (var ban of this.bans)
+        {
+            if (ban.name == player.username || ban.ip == player.socket.remoteAddress)
+                return true;
+        }
+        return false;
+    }
+
+    getBanReason(player)
+    {
+        for (var ban of this.bans)
+        {
+            if (ban.name == player.username || ban.ip == player.socket.remoteAddress)
+                return ban.reason;
+        }
+        return "";
     }
 
     addSupportedExtension(extName, version)
@@ -408,9 +462,15 @@ class Server
         var entityIndex = this.entities.indexOf(entity);
         if (entityIndex > -1)
         {
-            if (entity.level != null)
-                entity.level.removeEntity(entity);
-            this.entities.splice(entityIndex, 1);
+            if (entity.player != null && entity.player.isLoggedIn())
+                // Failsafe if a player entity is removed while logged in
+                entity.player.disconnect('Your link has been severed!');
+            else
+            {
+                if (entity.level != null)
+                    entity.level.removeEntity(entity);
+                this.entities.splice(entityIndex, 1);
+            }
         }
     }
 

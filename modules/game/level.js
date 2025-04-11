@@ -223,7 +223,7 @@ class Level
                         break;
                 }
                 player.sendPacket(PacketType.SetMapEnvProperty, {
-                    propertyID: i,
+                    propertyID: j,
                     propertyValue: value
                 });
             }
@@ -232,8 +232,12 @@ class Level
         // sending it twice; once for initial position, once for spawn position
         if (sendPosition)
         {
+            // Level spawn
             player.entity.teleportCentered(this.spawnX, this.spawnY, this.spawnZ);
-            player.entity.teleportCentered(this.spawnX, this.spawnY, this.spawnZ);
+
+            // Last position
+            var lastPos = player.userData.lastPosition;
+            player.entity.updatePositionAndRotation(lastPos.posX, lastPos.posY, lastPos.posZ, lastPos.pitch, lastPos.yaw);
         }
 
         // delayed other players (doesnt work otherwise)

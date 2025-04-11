@@ -74,8 +74,6 @@ class Entity
             this.level.removeEntity(this);
         this.level = newLevel;
         this.level.addEntity(this);
-        if (this.player != null)
-            this.level.sendLevelData(this.player);
     }
 
     updatePositionAndRotation(x, y, z, pitch, yaw)

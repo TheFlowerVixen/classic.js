@@ -8,13 +8,15 @@ const PacketError = require('../network/stream.js').PacketError;
 const serializePacket = require('../network/stream.js').serializePacket;
 const deserializePacket = require('../network/stream.js').deserializePacket;
 const CommandSender = require('./command.js').CommandSender;
+const EntityPosition = require('../game/entity.js').EntityPosition;
 
 const PlayerState = {
     Connected: 0,
     SentHandshake: 1,
     SendingExtensions: 2,
     LoggedIn: 3,
-    Disconnected: 4
+    Disconnecting: 4,
+    Disconnected: 5
 };
 
 const DefaultUserData = {
@@ -59,6 +61,7 @@ class Player extends CommandSender
 
         this.socket.on('data', this.handleData.bind(this));
         this.socket.on('error', this.handleError.bind(this));
+        this.socket.on('close', this.handleDisconnect.bind(this));
 
         this.playerState = PlayerState.Connected;
         this.clientSoftware = "";
@@ -71,6 +74,7 @@ class Player extends CommandSender
 
         this.responseTime = 0;
         this.packetsSent = 0;
+        this.disconnectTimeout = 0;
 
         this.supportsCPE = false;
         this.supportedExtensions = [];
@@ -87,95 +91,6 @@ class Player extends CommandSender
             perspective: true,
             jumpHeight: -1
         };
-    }
-    
-    loadUserData(filePath)
-    {
-        var finalData = DefaultUserData;
-        if (!fs.existsSync(filePath))
-            fs.writeFileSync(filePath, JSON.stringify(finalData, null, 4));
-        else
-        {
-            finalData = Object.assign(finalData, JSON.parse(fs.readFileSync(filePath).toString()));
-            fs.writeFileSync(filePath, JSON.stringify(finalData, null, 4));
-        }
-        return finalData;
-    }
-
-    saveUserData(filePath, userData)
-    {
-        fs.writeFileSync(filePath, JSON.stringify(userData, null, 4));
-    }
-
-    setPassword(password)
-    {
-        var keys = this.server.getCipherKeys();
-        const cipher = crypto.createCipheriv('aes-256-cbc', keys[0], keys[1]);
-        var encrypted = cipher.update(password, 'utf8', 'hex');
-        encrypted += cipher.final('hex');
-        this.userData.password = encrypted;
-    }
-
-    isValidPassword(password)
-    {
-        try
-        {
-            var keys = this.server.getCipherKeys();
-            const decipher = crypto.createDecipheriv('aes-256-cbc', keys[0], keys[1]);
-            var decrypted = decipher.update(this.userData.password, 'hex', 'utf8');
-            decrypted += decipher.final('utf8');
-            return decrypted == password; 
-        }
-        catch (error)
-        {
-            console.error(`Error decrypting ${this.username}'s password - server keys may have changed!!!`);
-            return false;
-        }
-    }
-
-    assignEntity(entity)
-    {
-        this.entity = entity;
-        if (this.entity.player == null)
-            this.entity.player = this;
-    }
-
-    onLogin()
-    {
-        this.packetWaitingFor = -1;
-        console.log(`Player logged in as ${this.username} (auth key ${this.authKey}, supports CPE: ${this.supportsCPE})`);
-        this.userData = this.loadUserData(`users/${this.username}.json`);
-        this.playerState = PlayerState.LoggedIn;
-        this.sendPacket(PacketType.SetRank, {
-            rank: this.userData.rank
-        });
-        this.server.addPlayer(this);
-        this.server.sendPlayerToLevel(this, this.server.properties.mainLevel);
-        if (this.supportsExtension("HackControl"))
-            this.sendPacket(PacketType.HackControl, this.hacks);
-        this.server.notifyPlayerConnected(this);
-        this.server.fireEvent('player-login', this);
-    }
-
-    onDisconnect()
-    {
-        console.log(`Player ${this.username} disconnected`);
-        if (this.isLoggedIn())
-        {
-            this.playerState = PlayerState.Disconnected;
-            this.userData.lastPosition = this.entity.position;
-            this.saveUserData(`users/${this.username}.json`, this.userData);
-            this.currentLevel.removeEntity(this.entity);
-            this.server.removeEntity(this.entity);
-            this.server.notifyPlayerDisconnected(this);
-            this.server.fireEvent('player-disconnect', this);
-        }
-    }
-
-    networkUpdate()
-    {
-        if (this.currentLevel != null)
-            this.currentLevel.networkUpdate(this);
     }
 
     handleData(data)
@@ -237,20 +152,6 @@ class Player extends CommandSender
         this.resetResponse();
     }
 
-    handlePacketError(error)
-    {
-        switch (error[0])
-        {
-            case PacketError.InvalidID:
-                this.disconnect(`Invalid packet ${error[1]}`);
-                break;
-            
-            case PacketError.EndOfStream:
-                this.disconnect(`End of stream (reading packet ${error[1]})`);
-                break;
-        }
-    }
-
     handleHandshake(data)
     {
         if (this.playerState == PlayerState.Connected)
@@ -259,6 +160,15 @@ class Player extends CommandSender
         {
             // client shouldn't have sent another handshake, bail
             this.disconnect('You need to log in!');
+            return;
+        }
+
+        this.username = data.name;
+        this.authKey = data.extra;
+
+        if (this.server.isPlayerBanned(this))
+        {
+            this.disconnect(`You are banned from this server! Reason: ${this.server.getBanReason(this)}`);
             return;
         }
 
@@ -274,8 +184,6 @@ class Player extends CommandSender
             return;
         }
 
-        this.username = data.name;
-        this.authKey = data.extra;
         if (this.server.properties.broadcast && this.server.properties.verifyNames)
         {
             var hashCheck = crypto.hash('md5', this.server.broadcaster.salt + this.username);
@@ -305,7 +213,7 @@ class Player extends CommandSender
         else
         {
             this.clientSoftware = "Vanilla";
-            this.onLogin();
+            this.login();
         }
     }
 
@@ -409,7 +317,7 @@ class Player extends CommandSender
     {
         this.blockSupportLevel = data.supportLevel;
         if (this.packetWaitingFor == PacketType.CustomBlockSupportLevel)
-            this.onLogin();
+            this.login();
     }
 
     handleError(err)
@@ -417,6 +325,118 @@ class Player extends CommandSender
         console.log(err);
         if (this.isLoggedIn())
             this.disconnect(`Internal error: "${err}"`);
+    }
+
+    handlePacketError(packet)
+    {
+        switch (packet.error)
+        {
+            case PacketError.InvalidID:
+                this.disconnect(`Invalid packet ${packet.id}`);
+                break;
+            
+            case PacketError.EndOfStream:
+                this.disconnect(`End of stream (reading packet ${packet.id})`);
+                break;
+        }
+    }
+
+    handleDisconnect(wasAbrupt)
+    {
+        console.log(`Player ${this.username} disconnected`);
+        this.playerState = PlayerState.Disconnected;
+        if (this.entity != null)
+        {
+            this.userData.lastPosition = this.entity.position;
+            this.currentLevel.removeEntity(this.entity);
+        }
+        this.saveUserData(`users/${this.username}.json`, this.userData);
+        this.server.removePlayer(this);
+        this.server.fireEvent('player-disconnect', this);
+    }
+
+    login()
+    {
+        this.packetWaitingFor = -1;
+        console.log(`Player logged in as ${this.username} (auth key ${this.authKey}, supports CPE: ${this.supportsCPE})`);
+        this.userData = this.loadUserData(`users/${this.username}.json`);
+        this.playerState = PlayerState.LoggedIn;
+        this.sendPacket(PacketType.SetRank, {
+            rank: this.userData.rank
+        });
+        this.server.addPlayer(this);
+        this.server.sendPlayerToLevel(this, this.server.properties.mainLevel, false);
+        if (this.supportsExtension("HackControl"))
+            this.sendPacket(PacketType.HackControl, this.hacks);
+        this.server.notifyPlayerConnected(this);
+        this.server.fireEvent('player-login', this);
+    }
+
+    assignEntity(entity)
+    {
+        this.entity = entity;
+        if (this.entity.player == null)
+            this.entity.player = this;
+    }
+
+    loadUserData(filePath)
+    {
+        var finalData = DefaultUserData;
+        if (!fs.existsSync(filePath))
+            fs.writeFileSync(filePath, JSON.stringify(finalData, null, 4));
+        else
+        {
+            finalData = Object.assign(finalData, JSON.parse(fs.readFileSync(filePath).toString()));
+            fs.writeFileSync(filePath, JSON.stringify(finalData, null, 4));
+        }
+        return finalData;
+    }
+
+    saveUserData(filePath, userData)
+    {
+        fs.writeFileSync(filePath, JSON.stringify(userData, null, 4));
+    }
+
+    setPassword(password)
+    {
+        var keys = this.server.getCipherKeys();
+        const cipher = crypto.createCipheriv('aes-256-cbc', keys[0], keys[1]);
+        var encrypted = cipher.update(password, 'utf8', 'hex');
+        encrypted += cipher.final('hex');
+        this.userData.password = encrypted;
+    }
+
+    isValidPassword(password)
+    {
+        try
+        {
+            var keys = this.server.getCipherKeys();
+            const decipher = crypto.createDecipheriv('aes-256-cbc', keys[0], keys[1]);
+            var decrypted = decipher.update(this.userData.password, 'hex', 'utf8');
+            decrypted += decipher.final('utf8');
+            return decrypted == password; 
+        }
+        catch (error)
+        {
+            console.error(`Error decrypting ${this.username}'s password - server keys may have changed!!!`);
+            return false;
+        }
+    }
+
+    networkUpdate()
+    {
+        if (this.playerState == PlayerState.Disconnecting)
+        {
+            this.disconnectTimeout++;
+            if (this.disconnectTimeout == 60)
+            {
+                // Forcefully close the socket if the client hasn't disconnected on their own yet
+                this.socket.close();
+            }
+            return;
+        }
+        if (this.currentLevel != null)
+            this.currentLevel.networkUpdate(this);
     }
 
     tickResponse()
@@ -450,17 +470,21 @@ class Player extends CommandSender
 
     disconnect(reason)
     {
-        if (this.playerState == PlayerState.Disconnected)
+        if (this.playerState >= PlayerState.Disconnecting)
         {
-            console.warn(`Tried to disconnect ${this.username}, but they were already disconnected`);
+            console.warn(`Tried to disconnect ${this.username}, but they were already disconnected or are being disconnected`);
             return;
         }
-        this.playerState == PlayerState.Disconnected;
+        this.playerState == PlayerState.Disconnecting;
         console.log(`Disconnecting ${this.username} with reason "${reason}"`)
         this.sendPacket(PacketType.DisconnectPlayer, {
             reason: this.adjustString(reason)
         });
-        this.server.fireEvent('player-disconnect', this);
+    }
+
+    ban(reason)
+    {
+        this.server.banPlayer(this, reason);
     }
 
     isLoggedIn()
@@ -497,14 +521,17 @@ class Player extends CommandSender
         this.sendPacketChunk(packet);
     }
 
-    sendToLevel(level)
+    sendToLevel(level, resetPosition = true)
     {
         if (this.isLoggedIn())
         {
+            if (resetPosition)
+                this.userData.lastPosition = new EntityPosition(0, 0, 0, 0, 0);
             if (this.currentLevel != null)
                 this.currentLevel.removeEntity(this.entity);
             this.currentLevel = level;
             this.entity.joinLevel(level);
+            this.currentLevel.sendLevelData(this);
             this.server.notifyPlayerInfoUpdate(this);
         }
     }

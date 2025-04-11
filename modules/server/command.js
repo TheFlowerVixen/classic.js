@@ -305,6 +305,89 @@ const DefaultCommands = [
             global.server.broadcastMessage(`[${sender.getName()}] ${message}`);
             return CommandResult.Success;
         }
+    },
+
+    {
+        name: "kick",
+        aliases: [],
+        description: "Disconnects a player from the server",
+        usage: "/<command> <name> <reason>",
+        requiredRank: 100,
+        executor: (sender, args) => {
+            if (args.length < 1)
+                return CommandResult.InvalidArguments;
+            var player = global.server.getPlayer(args[0]);
+            if (player == null)
+            {
+                sender.sendMessage(`&cPlayer ${args[0]} is not online or doesn't exist!`);
+                return CommandResult.Success;
+            }
+            /*
+            if (player == sender)
+            {
+                sender.sendMessage(`&cYou can't kick yourself!`);
+                return CommandResult.Success;
+            }
+            */
+            var reason = "You were kicked from the server!";
+            if (args.length > 1)
+                reason = args.splice(1).join(' ');
+            player.disconnect(reason);
+            sender.sendMessage(`&aKicked ${player.username}`);
+            return CommandResult.Success;
+        }
+    },
+
+    {
+        name: "ban",
+        aliases: [],
+        description: "Bans a player from the server",
+        usage: "/<command> <name> <reason>",
+        requiredRank: 100,
+        executor: (sender, args) => {
+            if (args.length < 1)
+                return CommandResult.InvalidArguments;
+            var player = global.server.getPlayer(args[0]);
+            if (player == null)
+            {
+                sender.sendMessage(`&cPlayer ${args[0]} is not online or doesn't exist!`);
+                return CommandResult.Success;
+            }
+            /*
+            if (player == sender)
+            {
+                sender.sendMessage(`&cYou can't kick yourself!`);
+                return CommandResult.Success;
+            }
+            */
+            var reason = "You are permanently banned!";
+            if (args.length > 1)
+                reason = args.splice(1).join(' ');
+            var result = global.server.banPlayer(player, reason);
+            if (result)
+                sender.sendMessage(`&aBanned ${player.username}`);
+            else
+                sender.sendMessage(`&cThat player is already banned (and is somehow still online)!`);
+            return CommandResult.Success;
+        }
+    },
+
+    {
+        name: "pardon",
+        aliases: ["unban"],
+        description: "Un-bans a player from the server",
+        usage: "/<command> <name>",
+        requiredRank: 100,
+        executor: (sender, args) => {
+            if (args.length < 1)
+                return CommandResult.InvalidArguments;
+            var result = global.server.pardonPlayer(args[0]);
+            if (result)
+                sender.sendMessage(`&aPardoned ${args[0]}`);
+            else
+                sender.sendMessage(`&cThat player isn't banned!`);
+            return CommandResult.Success;
+        }
     }
 ];
 

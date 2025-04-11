@@ -142,6 +142,7 @@ dist
 
 # Generated server files
 properties.json
+bans.json
 SERVER_KEY
 users/
 levels/
