@@ -516,15 +516,16 @@ class Player extends CommandSender
 
     sendPacket(id, data = {})
     {
-        var packet = serializePacket(id, data);
-        if (isNumberObject(packet))
+        var chunk = serializePacket(id, data);
+        if (isNumberObject(chunk))
         {
-            console.error(`Error serializing packet ${Object.keys(PacketType)[id]}: ${Object.keys(PacketError)[packet]}`);
+            console.error(`Error serializing packet ${Object.keys(PacketType)[id]}: ${Object.keys(PacketError)[chunk]}`);
             console.log(data);
             console.trace();
             return;
         }
-        this.sendPacketChunk(packet);
+        if (this.server.fireEvent('server-packet', this.server, this, {id: id, data: data, size: chunk.length}))
+            this.sendPacketChunk(chunk);
     }
 
     sendToLevel(level, resetPosition = true)
