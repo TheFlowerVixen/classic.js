@@ -1,3 +1,5 @@
+// @ts-check
+
 const Entity = require('./entity.js').Entity;
 const EntityPosition = require('./entity.js').EntityPosition;
 

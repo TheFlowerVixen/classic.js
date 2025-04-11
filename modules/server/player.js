@@ -1,5 +1,8 @@
+// @ts-check
+
 const crypto = require('crypto');
 const fs = require('fs');
+const { isNumberObject } = require('util/types');
 const PacketType = require('../network/packet.js').PacketType;
 const PacketError = require('../network/stream.js').PacketError;
 const serializePacket = require('../network/stream.js').serializePacket;
@@ -59,11 +62,10 @@ class Player extends CommandSender
 
         this.playerState = PlayerState.Connected;
         this.clientSoftware = "";
-        this.playerID = -1;
         this.username = "";
         this.authKey = "";
         this.entity = null;
-        this.userData = null;
+        this.userData = {};
         this.currentLevel = null;
         this.localChat = false;
 
@@ -94,7 +96,7 @@ class Player extends CommandSender
             fs.writeFileSync(filePath, JSON.stringify(finalData, null, 4));
         else
         {
-            finalData = Object.assign(finalData, JSON.parse(fs.readFileSync(filePath)));
+            finalData = Object.assign(finalData, JSON.parse(fs.readFileSync(filePath).toString()));
             fs.writeFileSync(filePath, JSON.stringify(finalData, null, 4));
         }
         return finalData;
@@ -188,10 +190,9 @@ class Player extends CommandSender
         while (offset < data.length)
         {
             var packet = deserializePacket(data, offset);
-            offset += packet.size;
-            
+
             // error check
-            if (packet.length == 2)
+            if (packet.error != undefined)
             {
                 this.handlePacketError(packet);
                 return;
@@ -227,6 +228,8 @@ class Player extends CommandSender
                     this.handleCustomBlockSupportLevel(packet.data);
                     break;
             }
+
+            offset += packet.size;
 
             // Plugins may handle packets individually if they wish
             this.server.fireEvent('player-packet', this, packet);
@@ -484,9 +487,9 @@ class Player extends CommandSender
     sendPacket(id, data = {})
     {
         var packet = serializePacket(id, data);
-        if (Array.isArray(packet))
+        if (isNumberObject(packet))
         {
-            console.error(`Error serializing packet id ${packet[1]}: ${packet[0]}`);
+            console.error(`Error serializing packet ${Object.keys(PacketType)[id]}: ${Object.keys(PacketError)[packet]}`);
             console.log(data);
             console.trace();
             return;
@@ -633,7 +636,7 @@ class Player extends CommandSender
 
     sendPlayerListAdded(otherPlayer)
     {
-        if (otherPlayer.supportsExtension("ExtPlayerList", 1) && otherPlayer.currentLevel === entity.currentLevel)
+        if (otherPlayer.supportsExtension("ExtPlayerList", 1) && otherPlayer.currentLevel === this.entity.currentLevel)
         {
             otherPlayer.sendPacket(PacketType.ExtAddPlayerName, {
                 nameID: this.playerID,

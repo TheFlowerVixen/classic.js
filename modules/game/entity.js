@@ -1,3 +1,5 @@
+// @ts-check
+
 const PacketType = require('../network/packet.js').PacketType;
 
 class EntityPosition

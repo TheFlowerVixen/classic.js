@@ -1,3 +1,5 @@
+// @ts-check
+
 const CommandSender = require('./command.js').CommandSender;
 const readline = require('readline');
 

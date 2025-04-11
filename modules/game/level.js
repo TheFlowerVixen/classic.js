@@ -1,3 +1,5 @@
+// @ts-check
+
 const zlib = require('node:zlib');
 const fs = require('fs');
 const PacketType = require('../network/packet.js').PacketType;
@@ -102,7 +104,7 @@ class Level
         var jsonPath = `levels/${this.levelName}.json`;
         if (fs.existsSync(binPath) && fs.existsSync(jsonPath))
         {
-            Object.assign(this, JSON.parse(fs.readFileSync(jsonPath)));
+            Object.assign(this, JSON.parse(fs.readFileSync(jsonPath).toString()));
             this.decompressBlockData(fs.readFileSync(binPath));
         }
     }
@@ -196,9 +198,9 @@ class Level
                 });
             }
 
-            for (var i in LevelProperties)
+            for (var j in LevelProperties)
             {
-                var property = LevelProperties[i];
+                var property = LevelProperties[j];
                 var value = this.customProperties[property];
                 switch (property)
                 {

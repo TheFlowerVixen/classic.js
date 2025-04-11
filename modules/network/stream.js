@@ -1,3 +1,4 @@
+// @ts-check
 // Network helper module for data packets
 
 const PacketData = require('./packet.js').PacketData;
@@ -45,6 +46,7 @@ class NetStream
 		{
 			var buffer = Buffer.alloc(getDataTypeSize(type));
 			var value = data * getDataTypeScaleFactor(type);
+			// @ts-ignore
 			buffer[getDataTypeWriteFunc(type)](value);
 			this.chunks.push(buffer);
 		}
@@ -119,12 +121,12 @@ function deserializePacket(data, offset)
 	var netStream = new NetStream(data, offset);
 
 	if (netStream.checkEndOfStream(1))
-		return [PacketError.EndOfStream, null];
+		return { error: PacketError.EndOfStream };
 	const packetID = netStream.readData(DataType.UByte);
 
 	const packetType = PacketData[packetID];
 	if (packetType == undefined)
-		return [PacketError.InvalidID, packetID];
+		return { id: packetID, error: PacketError.InvalidID };
 
 	var packet = {
 		id: packetID,
@@ -134,7 +136,7 @@ function deserializePacket(data, offset)
 	for (const [key, value] of Object.entries(packetType))
 	{
 		if (netStream.checkEndOfStream(value))
-			return [PacketError.EndOfStream, packetID];
+			return { id: packetID, error: PacketError.EndOfStream };
 
 		packet.data[key] = readDataType(value, netStream);
 	}
@@ -148,7 +150,7 @@ function serializePacket(packetID, data)
 
 	const packetType = PacketData[packetID];
 	if (packetType == undefined)
-		return [PacketError.InvalidID, packetID];
+		return PacketError.InvalidID
 
 	netStream.writeData(DataType.UByte, packetID);
 	for (const [key, value] of Object.entries(packetType))

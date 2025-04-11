@@ -1,3 +1,5 @@
+// @ts-check
+
 const randomInt = require('node:crypto').randomInt;
 const base62 = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const https = require('https');

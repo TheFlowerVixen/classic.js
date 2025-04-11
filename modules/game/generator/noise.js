@@ -1,5 +1,6 @@
+// @ts-check
+
 const LevelGenerator = require('./base.js').LevelGenerator;
-const generatePerlinNoise = require('perlin-noise').generatePerlinNoise;
 
 class NoiseLevelGenerator extends LevelGenerator
 {
@@ -11,7 +12,7 @@ class NoiseLevelGenerator extends LevelGenerator
 
     preGenerate(level)
     {
-        this.noise = generatePerlinNoise(level.sizeX, level.sizeZ);
+        //this.noise = generatePerlinNoise(level.sizeX, level.sizeZ);
     }
 
     getBlock(x, y, z)

@@ -1,3 +1,5 @@
+// @ts-check
+
 const LevelGenerator = require('./base.js').LevelGenerator;
 
 class FlatLevelGenerator extends LevelGenerator

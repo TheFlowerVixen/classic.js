@@ -1,3 +1,5 @@
+// @ts-check
+
 const CommandResult = {
     NoSuchCommand: 1,
     InvalidArguments: 2,
@@ -6,11 +8,8 @@ const CommandResult = {
     Success: 5
 };
 
-function getDefaultCommands()
-{
-    var commands = [];
-
-    commands.push({
+const DefaultCommands = [
+    {
         name: "help",
         aliases: ["h", "?"],
         description: "Shows this help message",
@@ -19,19 +18,23 @@ function getDefaultCommands()
             var commands = global.server.commands;
             for (var command of commands)
             {
-                if (args.length > 0 && (args[0] == command.name || command.aliases.indexOf(args[0]) > -1))
+                if (args.length > 0)
                 {
-                    sender.sendMessage(`/${command.name} - ${command.description}`);
-                    sender.sendMessage(`Usage: ${command.usage.replace("<command>", command.name)}`);
-                    break;
+                    if (args[0] == command.name || command.aliases.indexOf(args[0]) > -1)
+                    {
+                        sender.sendMessage(`/${command.name} - ${command.description}`);
+                        sender.sendMessage(`Usage: ${command.usage.replace("<command>", command.name)}`);
+                        break;
+                    }
                 }
-                sender.sendMessage(`/${command.name} - ${command.description}`);
+                else
+                    sender.sendMessage(`/${command.name} - ${command.description}`);
             }
             return CommandResult.Success;
         }
-    });
+    },
 
-    commands.push({
+    {
         name: "position",
         aliases: ["pos"],
         description: "Shows you your current position",
@@ -42,9 +45,9 @@ function getDefaultCommands()
             sender.sendMessage(`&ePosition: &cX &e${sender.entity.position.posX}, &aY &e${sender.entity.position.posY}, &9Z &e${sender.entity.position.posZ}`);
             return CommandResult.Success;
         }
-    });
+    },
 
-    commands.push({
+    {
         name: "leave",
         aliases: [],
         description: "Disconnects you from the server",
@@ -55,9 +58,9 @@ function getDefaultCommands()
             sender.disconnect('See ya!');
             return CommandResult.Success;
         }
-    });
+    },
 
-    commands.push({
+    {
         name: "reload",
         aliases: [],
         description: "Reloads the server",
@@ -69,9 +72,9 @@ function getDefaultCommands()
             sender.sendMessage('&aReload complete');
             return CommandResult.Success;
         }
-    });
+    },
 
-    commands.push({
+    {
         name: "level",
         aliases: ["lvl"],
         description: "Do level-related things",
@@ -138,9 +141,9 @@ function getDefaultCommands()
             }
             return CommandResult.Success;
         }
-    });
+    },
 
-    commands.push({
+    {
         name: "elist",
         aliases: [],
         description: "Show a list of entities currently in the server",
@@ -158,9 +161,9 @@ function getDefaultCommands()
             sendEListMessage(global.server.entities, "server");
             return CommandResult.Success;
         }
-    });
+    },
 
-    commands.push({
+    {
         name: "clear",
         aliases: [],
         description: "Clears your hotbar",
@@ -177,9 +180,9 @@ function getDefaultCommands()
                 sender.sendMessage("&cYour client doesn't support this!");
             return CommandResult.Success;
         }
-    });
+    },
 
-    commands.push({
+    {
         name: "local",
         aliases: ["lc"],
         description: "Switches your chat mode to local",
@@ -194,9 +197,9 @@ function getDefaultCommands()
             }
             return CommandResult.Success;
         }
-    });
+    },
 
-    commands.push({
+    {
         name: "global",
         aliases: ["gc"],
         description: "Switches your chat mode to global",
@@ -211,9 +214,9 @@ function getDefaultCommands()
             }
             return CommandResult.Success;
         }
-    });
+    },
 
-    commands.push({
+    {
         name: "model",
         aliases: ["m"],
         description: "Changes your model",
@@ -228,9 +231,9 @@ function getDefaultCommands()
                 sender.sendMessage('&bNOTE: &eYour client does not support this feature, so you will not be able to see this change.');
             return CommandResult.Success;
         }
-    });
+    },
 
-    commands.push({
+    {
         name: "stop",
         aliases: [],
         description: "Stops the server",
@@ -241,9 +244,9 @@ function getDefaultCommands()
             global.server.shutDownServer();
             return CommandResult.Success;
         }
-    });
+    },
 
-    commands.push({
+    {
         name: "op",
         aliases: [],
         description: "Elevates a player's rank",
@@ -262,9 +265,9 @@ function getDefaultCommands()
             sender.sendMessage(`&aOpped ${player.username}`);
             return CommandResult.Success;
         }
-    });
+    },
 
-    commands.push({
+    {
         name: "deop",
         aliases: [],
         description: "De-elevates a player's rank",
@@ -288,9 +291,9 @@ function getDefaultCommands()
             sender.sendMessage(`&aDe-opped ${player.username}`);
             return CommandResult.Success;
         }
-    });
+    },
 
-    commands.push({
+    {
         name: "say",
         aliases: [],
         description: "Sends a global message to everyone",
@@ -302,10 +305,8 @@ function getDefaultCommands()
             global.server.broadcastMessage(`[${sender.getName()}] ${message}`);
             return CommandResult.Success;
         }
-    });
-
-    return commands;
-}
+    }
+];
 
 class CommandSender
 {
@@ -335,4 +336,4 @@ class CommandSender
     }
 }
 
-module.exports = { CommandResult, getDefaultCommands, CommandSender };
+module.exports = { CommandResult, DefaultCommands, CommandSender };

@@ -1,3 +1,5 @@
+// @ts-check
+
 const DataType = require('./data.js').DataType;
 
 const PacketType = {

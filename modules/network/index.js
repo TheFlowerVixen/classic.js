@@ -1,3 +1,5 @@
+// @ts-check
+
 const DataType = require('./data.js').DataType;
 const DataTypeSpecial = require('./data.js').DataTypeSpecial;
 const getDataTypeSize = require('./data.js').getDataTypeSize;

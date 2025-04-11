@@ -8,7 +8,7 @@ const PlayerState = require('./player.js').PlayerState;
 const Broadcaster = require('./broadcast.js').Broadcaster;
 
 const CommandResult = require('./command.js').CommandResult;
-const getDefaultCommands = require('./command.js').getDefaultCommands;
+const DefaultCommands = require('./command.js').DefaultCommands;
 const CommandSender = require('./command.js').CommandSender;
 
 const Console = require('./console.js').Console;
@@ -19,6 +19,6 @@ module.exports = {
     Plugin,
     Player, PlayerState,
     Broadcaster,
-    CommandResult, getDefaultCommands, CommandSender,
+    CommandResult, DefaultCommands, CommandSender,
     Console
 };

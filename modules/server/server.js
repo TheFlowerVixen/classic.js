@@ -1,3 +1,5 @@
+// @ts-check
+
 const net = require('node:net');
 const fs = require('fs');
 const crypto = require('crypto');
@@ -10,7 +12,7 @@ const Broadcaster = require('./broadcast.js').Broadcaster;
 const FlatLevelGenerator = require('../game/generator/flat.js').FlatLevelGenerator;
 const Entity = require('../game/entity.js').Entity;
 const CommandResult = require('./command.js').CommandResult;
-const getDefaultCommands = require('./command.js').getDefaultCommands;
+const DefaultCommands = require('./command.js').DefaultCommands;
 const Console = require('./console.js').Console;
 const ansiColorMessage = require('./console.js').ansiColorMessage;
 
@@ -49,7 +51,7 @@ class Server
         this.players = [];
         this.entities = [];
 
-        this.properties = null;
+        this.properties = {};
         this.serverKey = null;
         this.levels = {};
         this.plugins = [];
@@ -81,7 +83,7 @@ class Server
             fs.writeFileSync(filePath, JSON.stringify(finalProperties, null, 4));
         else
         {
-            finalProperties = Object.assign(finalProperties, JSON.parse(fs.readFileSync(filePath)));
+            finalProperties = Object.assign(finalProperties, JSON.parse(fs.readFileSync(filePath).toString()));
             fs.writeFileSync(filePath, JSON.stringify(finalProperties, null, 4));
         }
         return finalProperties;
@@ -153,7 +155,7 @@ class Server
 
     loadCommands()
     {
-        var commands = [...getDefaultCommands()];
+        var commands = [...DefaultCommands];
         for (var plugin of this.plugins)
         {
             for (var command of plugin.getCommands())
@@ -193,7 +195,9 @@ class Server
 
     getCipherKeys()
     {
-        return [ this.serverKey.subarray(0, 32), this.serverKey.subarray(32, 48) ];
+        if (this.serverKey != null)
+            return [this.serverKey.subarray(0, 32), this.serverKey.subarray(32, 48)];
+        return null;
     }
 
     startServer()
@@ -244,8 +248,8 @@ class Server
             else
                 break;
         }
-        var player = new Player(server, socket, id);
-        server.fireEvent('player-connected', player);
+        var newPlayer = new Player(server, socket, id);
+        server.fireEvent('player-connected', newPlayer);
     }
 
     onClientDisconnected(abrupt)
@@ -394,9 +398,9 @@ class Server
             else
                 break;
         }
-        var entity = new Entity(id, name);
-        this.entities.push(entity);
-        return entity;
+        var newEntity = new Entity(id, name);
+        this.entities.push(newEntity);
+        return newEntity;
     }
 
     removeEntity(entity)
@@ -432,12 +436,14 @@ class Server
     {
         var result = CommandResult.NoSuchCommand;
         var errorMessage = "";
+        var usageMessage = "";
         for (var command of this.commands)
         {
             if (command.name == commandName || command.aliases.indexOf(commandName) > -1)
             {
                 try
                 {
+                    usageMessage = command.usage.replace('<command>', command.name);
                     if (command.requiredRank != undefined)
                     {
                         if (sender.hasRank(command.requiredRank))
@@ -459,7 +465,7 @@ class Server
         switch (result)
         {
             case CommandResult.InvalidArguments:
-                sender.sendMessage(`Usage: ${command.usage.replace('<command>', command.name)}`);
+                sender.sendMessage(`Usage: ${usageMessage}`);
                 break;
             
             case CommandResult.NoSuchCommand:
@@ -473,6 +479,7 @@ class Server
             
             case CommandResult.Error:
                 sender.sendMessage(`&cAn error occurred running this command: ${errorMessage}`);
+                break;
         }
         return result;
     }

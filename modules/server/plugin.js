@@ -1,3 +1,5 @@
+// @ts-check
+
 const CommandResult = require('./command.js').CommandResult;
 const EventEmitter = require('events').EventEmitter;
 

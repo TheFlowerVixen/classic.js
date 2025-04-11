@@ -1,3 +1,5 @@
+// @ts-check
+
 const DataType = {
 	// basic types
 	Byte: 0,
