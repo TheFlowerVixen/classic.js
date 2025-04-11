@@ -25,6 +25,7 @@ const DefaultProperties = {
     mainLevel: "main",
     autosaveInterval: 10,
     allowVanillaClients: true,
+    requiredExtensions: [],
     //allowWebClients: true,
 
     broadcast: true,
@@ -361,7 +362,7 @@ class Server
         for (var player of server.players)
             player.disconnect('Server shutting down');
         server.unloadPlugins();
-        fs.writeFileSync('bans.json', JSON.stringify(this.bans));
+        fs.writeFileSync('bans.json', JSON.stringify(this.bans, null, 4));
         server.netServer.close();
         process.exit(exitCode);
     }
@@ -377,7 +378,7 @@ class Server
         };
         this.bans.push(ban);
         console.log(this.bans);
-        fs.writeFileSync('bans.json', JSON.stringify(this.bans));
+        fs.writeFileSync('bans.json', JSON.stringify(this.bans, null, 4));
         player.disconnect(`You are banned from this server! Reason: ${reason}`);
         return true;
     }
@@ -389,7 +390,7 @@ class Server
             if (this.bans[i].name == playerName)
             {
                 this.bans.splice(i, 1);
-                fs.writeFileSync('bans.json', JSON.stringify(this.bans));
+                fs.writeFileSync('bans.json', JSON.stringify(this.bans, null, 4));
                 return true;
             }
         }
@@ -418,7 +419,84 @@ class Server
 
     addSupportedExtension(extName, version)
     {
-        this.supportedExtensions.push({extName: extName, version: version});
+        if (!this.supportsExtension(extName, version))
+        {
+            this.supportedExtensions.push({ extName: extName, version: version });
+            return true;
+        }
+        return false;
+    }
+
+    removeSupportedExtension(extName, version)
+    {
+        if (this.requiresExtension(extName, version))
+            return false;
+        if (this.supportsExtension(extName, version))
+        {
+            for (var i = 0; i < this.supportedExtensions.length; i++)
+            {
+                var extension = this.supportedExtensions[i];
+                if (extension.extName == extName && extension.version == version)
+                {
+                    this.supportedExtensions.splice(i, 1);
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    supportsExtension(extName, version)
+    {
+        for (var extension of this.supportedExtensions)
+        {
+            if (extension.extName == extName && extension.version == version)
+                return true;
+        }
+        return false;
+    }
+
+    addRequiredExtension(extName, version)
+    {
+        if (!this.supportsExtension(extName, version))
+            return false;
+        if (!this.requiresExtension(extName, version))
+        {
+            this.properties.requiredExtensions.push({ extName: extName, version: version });
+            fs.writeFileSync('properties.json', JSON.stringify(this.properties, null, 4));
+            return true;
+        }
+        return false;
+    }
+
+    removeRequiredExtension(extName, version)
+    {
+        if (!this.supportsExtension(extName, version))
+            return false;
+        if (this.requiresExtension(extName, version))
+        {
+            for (var i = 0; i < this.properties.requiredExtensions.length; i++)
+            {
+                var extension = this.properties.requiredExtensions[i];
+                if (extension.extName == extName && extension.version == version)
+                {
+                    this.properties.requiredExtensions.splice(i, 1);
+                    fs.writeFileSync('properties.json', JSON.stringify(this.properties, null, 4));
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    requiresExtension(extName, version)
+    {
+        for (var extension of this.properties.requiredExtensions)
+        {
+            if (extension.extName == extName && extension.version == version)
+                return true;
+        }
+        return false;
     }
 
     getPlayerCount()

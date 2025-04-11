@@ -388,6 +388,67 @@ const DefaultCommands = [
                 sender.sendMessage(`&cThat player isn't banned!`);
             return CommandResult.Success;
         }
+    },
+
+    {
+        name: "require",
+        aliases: [],
+        description: "Adds an extension to the required extensions list",
+        usage: "/<command> <name> <version>",
+        requiredRank: 100,
+        executor: (sender, args) => {
+            if (args.length < 2)
+                return CommandResult.InvalidArguments;
+            var extName = args[0];
+            var version;
+            try
+            {
+                version = Number.parseInt(args[1]);
+            }
+            catch
+            {
+                sender.sendMessage('&cVersion number is not a valid integer');
+                return CommandResult.Success;
+            }
+            if (global.server.addRequiredExtension(extName, version))
+                sender.sendMessage(`&eAdded ${extName} v${version} to the server's required extensions`);
+            else
+                sender.sendMessage(`&cCouldn't add ${extName} v${version}!`);
+            return CommandResult.Success;
+        }
+    },
+
+    {
+        name: "optionalize",
+        aliases: ["unrequire"],
+        description: "Removes an extension from the required extensions list",
+        usage: "/<command> <name> <version>",
+        requiredRank: 100,
+        executor: (sender, args) => {
+            if (args.length < 2)
+                return CommandResult.InvalidArguments;
+            var extName = args[0];
+            var version;
+            try
+            {
+                version = Number.parseInt(args[1]);
+                if (!Number.isSafeInteger(version))
+                {
+                    sender.sendMessage('&cVersion number is not a valid integer');
+                    return CommandResult.Success;
+                }
+            }
+            catch
+            {
+                sender.sendMessage('&cVersion number is not a valid integer');
+                return CommandResult.Success;
+            }
+            if (global.server.removeRequiredExtension(extName, version))
+                sender.sendMessage(`&eRemoved ${extName} v${version} from the server's required extensions`);
+            else
+                sender.sendMessage(`&cCouldn't remove ${extName} v${version}!`);
+            return CommandResult.Success;
+        }
     }
 ];
 

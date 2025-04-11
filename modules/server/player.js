@@ -302,7 +302,10 @@ class Player extends CommandSender
         console.log(`Client software: ${this.clientSoftware}`);
         console.log(`Number of extensions: ${this.extensionCount}`);
         if (this.extensionCount == 0)
-            this.packetWaitingFor = PacketType.CustomBlockSupportLevel;
+        {
+            if (this.verifyExtensions())
+                this.packetWaitingFor = PacketType.CustomBlockSupportLevel;
+        }
     }
 
     handleExtEntry(data)
@@ -310,7 +313,10 @@ class Player extends CommandSender
         this.supportedExtensions.push(data);
         this.extensionCount--;
         if (this.extensionCount == 0)
-            this.packetWaitingFor = PacketType.CustomBlockSupportLevel;
+        {
+            if (this.verifyExtensions())
+                this.packetWaitingFor = PacketType.CustomBlockSupportLevel;
+        }
     }
 
     handleCustomBlockSupportLevel(data)
@@ -571,6 +577,20 @@ class Player extends CommandSender
                 return true;
         }
         return false;
+    }
+
+    verifyExtensions()
+    {
+        // Check if the player supports required extensions
+        for (var requiredExt of this.server.properties.requiredExtensions)
+        {
+            if (!this.supportsExtension(requiredExt.extName, requiredExt.version))
+            {
+                this.disconnect(`Your client doesn't support ${requiredExt.extName} v${requiredExt.version}!`);
+                return false;
+            }
+        }
+        return true;
     }
 
     getName()

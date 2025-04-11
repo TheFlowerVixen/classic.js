@@ -257,7 +257,8 @@ class Level
 
             // Last position
             var lastPos = player.userData.lastPosition;
-            player.entity.updatePositionAndRotation(lastPos.posX, lastPos.posY, lastPos.posZ, lastPos.pitch, lastPos.yaw);
+            if (lastPos != undefined)
+                player.entity.updatePositionAndRotation(lastPos.posX, lastPos.posY, lastPos.posZ, lastPos.pitch, lastPos.yaw);
         }
 
         // delayed other players (doesnt work otherwise)
