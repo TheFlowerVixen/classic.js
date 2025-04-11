@@ -98,6 +98,26 @@ class Level
         global.server.fireEvent('level-entityRemoved', entity);
     }
 
+    getEntityByName(name)
+    {
+        for (var entity of this.entities)
+        {
+            if (entity.name == name)
+                return entity;
+        }
+        return null;
+    }
+
+    getEntityByID(id)
+    {
+        for (var entity of this.entities)
+        {
+            if (entity.entityID == id)
+                return entity;
+        }
+        return null;
+    }
+
     loadLevel()
     {
         var binPath = `levels/${this.levelName}.lvl`;

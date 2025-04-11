@@ -36,12 +36,6 @@ const DefaultProperties = {
     listName: "classic.js Server",
 }
 
-const NotifyFlags = {
-    None: 0,
-    LocalOnly: 1,
-    NotMe: 2
-};
-
 class Server
 {
     constructor()
@@ -472,6 +466,26 @@ class Server
                 this.entities.splice(entityIndex, 1);
             }
         }
+    }
+
+    getEntityByName(name)
+    {
+        for (var entity of this.entities)
+        {
+            if (entity.name == name)
+                return entity;
+        }
+        return null;
+    }
+
+    getEntityByID(id)
+    {
+        for (var entity of this.entities)
+        {
+            if (entity.entityID == id)
+                return entity;
+        }
+        return null;
     }
 
     createLevel(name, sizeX, sizeY, sizeZ)
