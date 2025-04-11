@@ -41,6 +41,7 @@ class Server
 {
     constructor()
     {
+        global.server = this;
         this.netServer = null;
         
         this.players = [];

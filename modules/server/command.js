@@ -28,7 +28,15 @@ const DefaultCommands = [
                     }
                 }
                 else
-                    sender.sendMessage(`/${command.name} - ${command.description}`);
+                {
+                    if (command.requiredRank != undefined)
+                    {
+                        if (sender.hasRank(command.requiredRank))
+                            sender.sendMessage(`/${command.name} - ${command.description}`);
+                    }
+                    else
+                        sender.sendMessage(`/${command.name} - ${command.description}`);
+                }
             }
             return CommandResult.Success;
         }
