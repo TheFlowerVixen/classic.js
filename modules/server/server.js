@@ -310,12 +310,6 @@ class Server
         if (collisionPlayer != null)
             collisionPlayer.disconnect('Name collision (you were logged in elsewhere)');
 
-        player.sendPacket(PacketType.Handshake, {
-            protocolVersion: 0x07,
-            name: this.properties.serverName,
-            extra: this.properties.motd,
-            supportByte: 0x0
-        });
         player.assignEntity(this.createEntity(player.username));
         this.players.push(player);
     }

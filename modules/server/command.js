@@ -269,7 +269,7 @@ const DefaultCommands = [
                 sender.sendMessage(`&cPlayer ${args[0]} is not online or doesn't exist!`);
                 return CommandResult.Success;
             }
-            player.userData.rank = 100;
+            player.setRank(100);
             sender.sendMessage(`&aOpped ${player.username}`);
             return CommandResult.Success;
         }
@@ -295,7 +295,7 @@ const DefaultCommands = [
                 sender.sendMessage(`&cYou can't de-op yourself!`);
                 return CommandResult.Success;
             }
-            player.userData.rank = 0;
+            player.setRank(0);
             sender.sendMessage(`&aDe-opped ${player.username}`);
             return CommandResult.Success;
         }

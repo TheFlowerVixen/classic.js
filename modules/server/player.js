@@ -47,6 +47,14 @@ const FallbackBlocksLevel1 = [
     0x01
 ]
 
+const AdminBlocks = [
+    0x7,
+    0x8,
+    0x9,
+    0xA,
+    0xB
+];
+
 class Player extends CommandSender
 {
     constructor(server, socket, playerID)
@@ -187,6 +195,8 @@ class Player extends CommandSender
         if (this.server.properties.broadcast && this.server.properties.verifyNames)
         {
             var hashCheck = crypto.hash('md5', this.server.broadcaster.salt + this.username);
+            console.log(hashCheck);
+            console.log(this.authKey);
             if (hashCheck != this.authKey)
             {
                 this.disconnect("Unable to authenticate! Please try logging in again");
@@ -271,6 +281,22 @@ class Player extends CommandSender
     handleSetBlock(data)
     {
         var oldBlock = this.currentLevel.getBlock(data.posX, data.posY, data.posZ);
+        var newBlock = data.blockType;
+        if (data.mode == 0x0)
+            newBlock = oldBlock;
+        
+        // Verify blocks being placed are allowed
+        var blockPermissions = this.getBlockPermissions();
+        if (blockPermissions[newBlock] != undefined)
+        {
+            if (data.mode == 0x0 ? !blockPermissions[newBlock].break : !blockPermissions[newBlock].place)
+            {
+                this.sendMessage("&cYou're not allowed to do that!");
+                this.handleSetBlockReject(data, oldBlock);
+                return;
+            }
+        }
+
         if (this.server.fireEvent('player-edit', this, data))
         {
             if (data.mode == 0x1)
@@ -285,14 +311,16 @@ class Player extends CommandSender
             }   
         }
         else
-        {
-            // Reject event
-            if (data.mode == 0x0)
-                data.blockType = oldBlock;
-            if (data.mode == 0x1)
-                data.blockType = 0;
-            this.sendPacket(PacketType.SetBlockServer, data);
-        }
+            this.handleSetBlockReject(data, oldBlock);
+    }
+
+    handleSetBlockReject(data, oldBlock)
+    {
+        if (data.mode == 0x0)
+            data.blockType = oldBlock;
+        if (data.mode == 0x1)
+            data.blockType = 0;
+        this.sendPacket(PacketType.SetBlockServer, data);
     }
 
     handleExtInfo(data)
@@ -367,13 +395,15 @@ class Player extends CommandSender
         console.log(`Player logged in as ${this.username} (auth key ${this.authKey}, supports CPE: ${this.supportsCPE})`);
         this.userData = this.loadUserData(`users/${this.username}.json`);
         this.playerState = PlayerState.LoggedIn;
-        this.sendPacket(PacketType.SetRank, {
-            rank: this.userData.rank
+        this.sendPacket(PacketType.Handshake, {
+            protocolVersion: 0x07,
+            name: this.server.properties.serverName,
+            extra: this.server.properties.motd,
+            supportByte: this.userData.rank
         });
         this.server.addPlayer(this);
         this.server.sendPlayerToLevel(this, this.server.properties.mainLevel, false);
-        if (this.supportsExtension("HackControl"))
-            this.sendPacket(PacketType.HackControl, this.hacks);
+        this.sendOtherData(true);
         this.server.notifyPlayerConnected(this);
         this.server.fireEvent('player-login', this);
     }
@@ -612,9 +642,7 @@ class Player extends CommandSender
     setRank(rank)
     {
         this.userData.rank = rank;
-        this.sendPacket(PacketType.SetRank, {
-            rank: this.userData.rank
-        });
+        this.sendOtherData();
         this.sendMessage('&eYour rank has been updated');
         this.server.notifyPlayerInfoUpdate(this);
     }
@@ -666,9 +694,15 @@ class Player extends CommandSender
             return blockType;
     }
 
-    setBlockPermission(block, allowed)
+    getBlockPermissions()
     {
-
+        var perms = {};
+        if (this.hasRank(100))
+        {
+            for (var block of AdminBlocks)
+                perms[block] = { place: true, break: true };
+        }
+        return perms;
     }
 
     setHack(hack, value)
@@ -676,7 +710,7 @@ class Player extends CommandSender
         if (this.supportsExtension("HackControl", 1) && this.hacks[hack] != undefined)
         {
             this.hacks[hack] = value;
-            this.sendPacket(PacketType.HackControl, this.hacks);
+            this.sendOtherData();
             return true;
         }
         return false;
@@ -701,6 +735,30 @@ class Player extends CommandSender
         otherPlayer.sendPacket(PacketType.ExtRemovePlayerName, {
             nameID: this.playerID
         });
+    }
+
+    sendOtherData(doNotSendRank = false)
+    {
+        if (!doNotSendRank)
+        {
+            this.sendPacket(PacketType.SetRank, {
+                rank: this.userData.rank
+            });
+        }
+        if (this.supportsExtension("HackControl"))
+            this.sendPacket(PacketType.HackControl, this.hacks);
+        if (this.supportsExtension("BlockPermissions", 1))
+        {
+            var blockPerms = this.getBlockPermissions();
+            for (var block of Object.keys(blockPerms))
+            {
+                this.sendPacket(PacketType.SetBlockPermission, {
+                    blockType: block,
+                    allowPlace: blockPerms[block].place,
+                    allowBreak: blockPerms[block].break
+                });
+            }
+        }
     }
 }
 

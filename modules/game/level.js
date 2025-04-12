@@ -32,7 +32,7 @@ class Level
         this.spawnZ = this.sizeZ / 2;
 
         this.entities = [];
-        this.blocks = new Array(this.sizeX * this.sizeY * this.sizeZ);
+        this.blocks = Buffer.alloc(this.sizeX * this.sizeY * this.sizeZ);
         this.customTextures = "";
         this.customWeather = 0;
         this.customProperties = {
@@ -158,9 +158,8 @@ class Level
     {
         var decompressedBlocks = zlib.gunzipSync(compressedBlocks);
         var blockSize = decompressedBlocks.readUInt32BE();
-        this.blocks = new Array(blockSize);
-        for (var i = 0; i < blockSize; i++)
-            this.blocks[i] = decompressedBlocks.readUInt8(4 + i);
+        this.blocks = Buffer.alloc(blockSize);
+        decompressedBlocks.copy(this.blocks, 0, 4);
     }
 
     sendLevelData(player, sendPosition = true)
@@ -169,9 +168,8 @@ class Level
         player.sendPacket(PacketType.LevelInit);
 
         // compress block data
-        var blocksCopy = [];
-        for (var i = 0; i < this.blocks.length; i++)
-            blocksCopy[i] = player.getPlayerSpecificBlock(this.blocks[i]);
+        var blocksCopy = Buffer.alloc(this.blocks.length);
+        this.blocks.forEach((block, index) => { blocksCopy[index] = player.getPlayerSpecificBlock(block); });
         var compressedBlocks = this.compressBlockData(blocksCopy);
         
         // level chunks

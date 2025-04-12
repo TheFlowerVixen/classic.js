@@ -36,6 +36,9 @@ const PacketType = {
     ExtRemovePlayerName: 0x18,
     ExtAddEntity2: 0x21,
 
+    // Extension BlockPermissions
+    SetBlockPermission: 0x1C,
+
     // Extension ChangeModel
     ChangeModel: 0x1D,
 
@@ -217,6 +220,12 @@ PacketData[PacketType.PlayerClicked] =
     targetBlockY: DataType.UShort,
     targetBlockZ: DataType.UShort,
     targetBlockFace: DataType.UByte
+};
+PacketData[PacketType.SetBlockPermission] =
+{
+    blockType: DataType.UByte,
+    allowPlace: DataType.UByte,
+    allowBreak: DataType.UByte
 };
 PacketData[PacketType.ChangeModel] =
 {
