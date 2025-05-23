@@ -59,11 +59,13 @@ class Level
     {
         if (global.server.ticksRan % 2 == 0)
         {
+            player.socket.cork();
             for (var entity of this.entities)
             {
                 if (entity != player.entity)
                     entity.sendEntityPosition(player);
             }
+            player.socket.uncork();
         }
     }
 
@@ -164,6 +166,8 @@ class Level
 
     sendLevelData(player, sendPosition = true)
     {
+        player.socket.cork();
+
         // level init
         player.sendPacket(PacketType.LevelInit);
 
@@ -259,10 +263,14 @@ class Level
                 player.entity.updatePositionAndRotation(lastPos.posX, lastPos.posY, lastPos.posZ, lastPos.pitch, lastPos.yaw);
         }
 
+        player.socket.uncork();
+
         // delayed other players (doesnt work otherwise)
-        setTimeout(function() {
+        setTimeout(function () {
+            player.socket.cork();
             for (var entity of this.entities)
                 entity.sendEntityAdded(player);
+            player.socket.uncork();
         }.bind(this), 50);
     }
 

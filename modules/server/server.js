@@ -26,7 +26,7 @@ const DefaultProperties = {
     autosaveInterval: 10,
     allowVanillaClients: true,
     requiredExtensions: [],
-    //allowWebClients: true,
+    allowWebClients: true,
 
     broadcast: true,
     broadcastInterval: 45,
@@ -324,6 +324,7 @@ class Server
 
     sendExtensionInfo(player)
     {
+        player.socket.cork();
         // info
         player.sendPacket(PacketType.ExtInfo, {
            software: "classic.js Alpha 0",
@@ -331,6 +332,7 @@ class Server
         });
         for (var extension of this.supportedExtensions)
             player.sendPacket(PacketType.ExtEntry, extension);
+        player.socket.uncork();
 
         player.sendPacket(PacketType.CustomBlockSupportLevel, {
             supportLevel: 1

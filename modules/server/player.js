@@ -464,7 +464,7 @@ class Player extends CommandSender
         if (this.playerState == PlayerState.Disconnecting)
         {
             this.disconnectTimeout++;
-            if (this.disconnectTimeout == 60)
+            if (this.disconnectTimeout == 20 && this.socket.readyState == 1)
             {
                 // Forcefully close the socket if the client hasn't disconnected on their own yet
                 this.socket.close();
@@ -739,6 +739,7 @@ class Player extends CommandSender
 
     sendOtherData(doNotSendRank = false)
     {
+        this.socket.cork();
         if (!doNotSendRank)
         {
             this.sendPacket(PacketType.SetRank, {
@@ -759,6 +760,7 @@ class Player extends CommandSender
                 });
             }
         }
+        this.socket.uncork();
     }
 }
 

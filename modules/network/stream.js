@@ -17,7 +17,6 @@ const PacketError = {
 	InvalidID: 0,
 	EndOfStream: 1
 }
-const PacketErrorCount = 2;
 
 class NetStream
 {
