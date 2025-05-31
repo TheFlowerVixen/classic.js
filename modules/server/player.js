@@ -387,6 +387,7 @@ class Player extends CommandSender
         }
         this.saveUserData(`users/${this.username}.json`, this.userData);
         this.server.removePlayer(this);
+        this.server.notifyPlayerDisconnected(this);
         this.server.fireEvent('player-disconnect', this);
     }
 
@@ -406,6 +407,11 @@ class Player extends CommandSender
         this.server.sendPlayerToLevel(this, this.server.properties.mainLevel, false);
         this.sendOtherData(true);
         this.server.notifyPlayerConnected(this);
+        for (var otherPlayer of this.server.players)
+        {
+            if (otherPlayer !== this)
+                otherPlayer.sendPlayerListAdded(this);
+        }
         this.server.fireEvent('player-login', this);
     }
 
@@ -638,6 +644,13 @@ class Player extends CommandSender
         return this.currentLevel;
     }
 
+    getIDFor(player)
+    {
+        if (this === player)
+            return 255; // You!
+        return this.playerID;
+    }
+
     hasRank(rank)
     {
         return this.userData.rank >= rank;
@@ -722,10 +735,10 @@ class Player extends CommandSender
 
     sendPlayerListAdded(otherPlayer)
     {
-        if (otherPlayer.supportsExtension("ExtPlayerList", 1) && otherPlayer.currentLevel === this.entity.currentLevel)
+        if (otherPlayer.supportsExtension("ExtPlayerList", 2))
         {
             otherPlayer.sendPacket(PacketType.ExtAddPlayerName, {
-                nameID: this.playerID,
+                nameID: this.getIDFor(otherPlayer),
                 playerName: this.entity.name,
                 listName: this.entity.name,
                 groupName: this.currentLevel.levelName,

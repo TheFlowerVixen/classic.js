@@ -700,7 +700,7 @@ class Server
 
     notifyPlayerConnected(player)
     {
-        this.notify(player.sendPlayerListAdded);
+        this.notify(player.sendPlayerListAdded.bind(player));
         this.notifyOthers(player, (otherPlayer) => {
             otherPlayer.sendMessage(`&e${player.username} joined the game`);
         });
@@ -708,7 +708,7 @@ class Server
 
     notifyPlayerDisconnected(player)
     {
-        this.notify(player.sendPlayerListRemoved);
+        this.notify(player.sendPlayerListRemoved.bind(player));
         this.notifyOthers(player, (otherPlayer) => {
             otherPlayer.sendMessage(`&e${player.username} left the game`);
         });
@@ -716,7 +716,7 @@ class Server
     
     notifyPlayerInfoUpdate(player)
     {
-        this.notify(player.sendPlayerListAdded);
+        this.notify(player.sendPlayerListAdded.bind(player));
     }
 
     notifyPlayerMessage(player, message, messageType)
