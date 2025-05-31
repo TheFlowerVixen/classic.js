@@ -2,6 +2,7 @@
 
 const crypto = require('crypto');
 const fs = require('fs');
+const path = require('path');
 const { isNumberObject } = require('util/types');
 const PacketType = require('../network/packet.js').PacketType;
 const PacketError = require('../network/stream.js').PacketError;
@@ -418,6 +419,9 @@ class Player extends CommandSender
     loadUserData(filePath)
     {
         var finalData = DefaultUserData;
+        var dirPath = path.dirname(filePath);
+        if (!fs.existsSync(dirPath))
+            fs.mkdirSync(dirPath);
         if (!fs.existsSync(filePath))
             fs.writeFileSync(filePath, JSON.stringify(finalData, null, 4));
         else

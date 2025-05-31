@@ -26,14 +26,14 @@ const DefaultProperties = {
     autosaveInterval: 10,
     allowVanillaClients: true,
     requiredExtensions: [],
-    allowWebClients: true,
+    allowWebClients: false,
 
-    broadcast: true,
+    broadcast: false,
     broadcastInterval: 45,
     broadcastURL: 'classicube.net',
-    useHTTPS: true,
+    useHTTPS: false,
     public: false,
-    verifyNames: true,
+    verifyNames: false,
     listName: "classic.js Server",
 }
 

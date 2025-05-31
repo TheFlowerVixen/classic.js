@@ -1,16 +1,13 @@
 {
   "name": "classicjs",
   "version": "1.0.0",
-  "description": "Minecraft Classic 0.30 server implementation in JavaScript",
+  "description": "Minecraft Classic Server 1.10 implementation",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
   "license": "ISC",
-  "dependencies": {
-    "perlin-noise": "^0.0.1"
-  },
   "exports": {
     "./server": "./modules/server/index.js",
     "./network": "./modules/network/index.js",
