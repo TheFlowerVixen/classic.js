@@ -85,7 +85,7 @@ function getDataTypeMinValue(type)
 {
 	if (type >= 50 && type < 100)
 		return DataTypeBasic[DataTypeScaled[type].base].minValue;
-	return DataTypeBasic[type].maxValue;
+	return DataTypeBasic[type].minValue;
 }
 
 function getDataTypeMaxValue(type)
