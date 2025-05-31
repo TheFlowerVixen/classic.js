@@ -10,6 +10,7 @@ Minecraft Classic Server 1.10 implementation in JavaScript using node.js
 
 # Things to do
 
+- Code comments & documentation
 - Block behaviors
 - Noise-based level generation
 - Name verification & secure logins
