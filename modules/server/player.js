@@ -9,6 +9,7 @@ const PacketError = require('../network/stream.js').PacketError;
 const serializePacket = require('../network/stream.js').serializePacket;
 const deserializePacket = require('../network/stream.js').deserializePacket;
 const CommandSender = require('./command.js').CommandSender;
+const ansiColorMessage = require('./console.js').ansiColorMessage;
 const EntityPosition = require('../game/entity.js').EntityPosition;
 
 const PlayerState = {
@@ -261,8 +262,11 @@ class Player extends CommandSender
                 this.storedMessage = "";
             }
         }
+        const codes = "0123456789abcdef";
+        for (var code of codes)
+            message = message.replace(`%${code}`, `&${code}`);
 
-        console.log(`${this.username}: ${message}`);
+        console.log(ansiColorMessage(`${this.username}: ${message}`));
         if (message.startsWith('/'))
             this.handleCommand(message.split(' '));
         else
